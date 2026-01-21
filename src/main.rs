@@ -1,25 +1,22 @@
-use std::io::{stdout, Write, Stdout};
-use std::{thread, time};
-use crossterm::{ExecutableCommand, cursor, terminal};
+use std::io::{stdout};
+use crossterm::{ExecutableCommand, cursor};
 use crossterm::terminal::{ClearType, Clear, enable_raw_mode, disable_raw_mode};
 use crossterm::event::{read, Event, KeyEvent, KeyCode};
 use crossterm::execute;
-use std::time::Duration;
-use crossterm::{event::poll};
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 
 fn refresh_screen() {
-    stdout().execute(Clear(ClearType::All));
+    stdout().execute(Clear(ClearType::All)).unwrap();
 }
 
 
 fn main() -> Result<(), Box<dyn std::error::Error>>{
     enable_raw_mode()?;
     execute!(stdout(), EnterAlternateScreen, Clear(ClearType::All))?;
-    let mut x = 5;
-    let mut y = 5;
+    let x = 5;
+    let y = 5;
 
-    stdout().execute(cursor::MoveTo(x, y));
+    stdout().execute(cursor::MoveTo(x, y)).unwrap();
 
     loop {
         match read() {
@@ -32,7 +29,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
                 _ => todo!()
             },
             Err(_) => todo!(),
-            _ => todo!()
         };
         refresh_screen();
     }
