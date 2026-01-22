@@ -1,4 +1,5 @@
 use std::io::{stdout};
+
 use rand::Rng;
 use crossterm::{ExecutableCommand, cursor};
 use crossterm::terminal::{ClearType, Clear, enable_raw_mode, disable_raw_mode};
@@ -10,6 +11,7 @@ fn refresh_screen() {
     stdout().execute(Clear(ClearType::All)).unwrap();
 }
 
+#[derive(Copy, Clone)]
 enum Dir {
     up = 0,
     right = 1,
@@ -17,17 +19,57 @@ enum Dir {
     left = 3,
 }
 
-static LEVEL_HEIGHT: usize = 21;
-static LEVEL_WIDTH: usize = 21;
+impl Dir {
+    fn opposite(&self) -> Dir {
+        match self {
+            Dir::left => Dir::right,
+            Dir::right => Dir::left,
+            Dir::up => Dir::down,
+            Dir::down => Dir::up,
+        }
+    }
+}
+
+static LEVEL_HEIGHT: usize = 9;
+static LEVEL_WIDTH: usize = 9;
 static BLOCK: usize = 0;
 static EMPTY: usize = 0b00001111;
 static START: usize = 0b11111;
 static EXIT: usize = 0b101111;
+static BLOCK_CHANCE: usize = 5;
+static ROOM_GFX_W: usize = 9;
+static ROOM_GFX_H: usize = 9;
+
+
+static walls: [&str; 16] = [
+    "#################################################################################",
+    "###...######...######...######...######...######...##############################",
+    "##############################......###......###......###########################",
+    "###...######...######...######......###......###......###########################",
+    "##############################...######...######...######...######...######...###",
+    "###...######...######...######...######...######...######...######...######...###",
+    "##############################......###......###......###...######...######...###",
+    "###...######...######...######......###......###......###...######...######...###",
+    "###########################......###......###......##############################",
+    "###...######...######...###......###......###......##############################",
+    "###########################...........................###########################",
+    "###...######...######...###...........................###########################",
+    "###########################......###......###......######...######...######...###",
+    "###...######...######...###......###......###......######...######...######...###",
+    "###########################...........................###...######...######...###",
+    "###...######...######...###...........................###...######...######...###",
+];
 
 struct Matrix {
     rows: usize,
     cols: usize,
     data: Vec<usize>
+}
+
+struct GFXMatrix {
+    rows: usize,
+    cols: usize,
+    data: Vec<& 'static str> // each string is 9 * 9 chars long
 }
 
 struct AMatrix {
@@ -53,10 +95,21 @@ impl Matrix {
     }
 }
 
+impl GFXMatrix {
+    fn new(rows: usize, cols: usize) -> GFXMatrix {
+        return GFXMatrix{
+            rows: rows,
+            cols: cols,
+            data: vec!["........."; cols * rows],
+        };
+    }
+
+}
+
 impl AMatrix {
     fn new() -> AMatrix {
         return AMatrix{
-            matrix: Matrix::new( LEVEL_HEIGHT, LEVEL_WIDTH ),
+            matrix: Matrix::new(LEVEL_HEIGHT, LEVEL_WIDTH),
             rng: rand::rng(),
         };
     }
@@ -69,35 +122,47 @@ impl AMatrix {
         self.matrix.set(row, col, val);
     }
 
-    fn block_one(&mut self, row: usize, col: usize, dir: Dir) {
+    fn modify_and(&mut self, row: usize, col: usize, val: usize) { 
         let mut new = self.get(row, col);
-        new = new & !(1 << (dir as usize));
+        new &= !(1 << val);
         self.set(row, col, new);
     }
 
+    fn modify_or(&mut self, row: usize, col: usize, val: usize) { 
+        let mut new = self.get(row, col);
+        new |= (1 << val);
+        self.set(row, col, new);
+    }
+
+    fn get_neighbor(&self, row: usize, col: usize, dir: Dir) -> Option<(usize, usize)> {
+        match dir {
+            Dir::left if col > 0 => Some((row, col - 1)),
+            Dir::right if col < self.matrix.cols - 1 => Some((row, col + 1)),
+            Dir::up if row > 0 => Some((row - 1, col)),
+            Dir::down if row < self.matrix.rows - 1 => Some((row + 1, col)),
+            _ => None,
+        }
+    }
+
+    fn block(&mut self, row: usize, col: usize, dir: Dir) {
+        self.modify_and(row, col, dir as usize);
+
+        if let Some((n_row, n_col)) = self.get_neighbor(row, col, dir) {
+            self.modify_and(n_row, n_col, dir.opposite() as usize);
+        }
+    }
+
+    fn unblock(&mut self, row: usize, col: usize, dir: Dir) {
+        self.modify_and(row, col, dir as usize);
+
+        if let Some((n_row, n_col)) = self.get_neighbor(row, col, dir) {
+            self.modify_and(n_row, n_col, dir.opposite() as usize);
+        }
+    }
+
     fn block_all(&mut self, row: usize, col: usize) {
-        // block the direct block
-        self.set(row, col, BLOCK);
-
-        // neighbours
-        // left
-        if col > 0 {
-            self.block_one(row, col - 1, Dir::right);
-        }
-
-        // right
-        if col < self.matrix.cols - 1 {
-            self.block_one(row, col+1, Dir::left);
-        }
-
-        // down
-        if row < self.matrix.rows - 1 {
-            self.block_one(row + 1, col, Dir::up);
-        }
-
-        // up
-        if row > 0 {
-            self.block_one(row-1, col, Dir::down);
+        for dir in [Dir::left, Dir::right, Dir::up, Dir::down] {
+            self.block(row, col, dir);
         }
     }
     
@@ -107,12 +172,36 @@ impl AMatrix {
             self.rng.random_range(1..self.matrix.cols-1)
         );
     }
+
+    fn block_random(&mut self, row: usize, col: usize) {
+        let v = self.get(row, col);
+
+        // Check if fully blocked (assuming 0 means all walls blocked)
+        // Adjust these masks based on your specific bit logic
+        if v & 0b1111 == 0 { return; } 
+
+        if self.rng.random_range(0..10) < BLOCK_CHANCE {
+            let choice = self.rng.random_range(0..6);
+            match choice {
+                0 => self.block(row, col, Dir::left),
+                1 => self.block(row, col, Dir::right),
+                2 => self.block(row, col, Dir::down),
+                3 => self.block(row, col, Dir::up),
+                4 => {
+                    self.block(row, col, Dir::up);
+                    self.block(row, col, Dir::down);
+                },
+                5 => {
+                    self.block(row, col, Dir::right);
+                    self.block(row, col, Dir::left);
+                }
+                _ => unreachable!()
+            }
+        }
+    }
 }
 
 fn main() -> () {
-    let mut rng: rand::rngs::ThreadRng = rand::rng();
-    println!("{:#?}", rng);
-
     let mut m: AMatrix = AMatrix::new();
 
     for col in 0..LEVEL_WIDTH {
@@ -130,39 +219,69 @@ fn main() -> () {
         let (ex, ey) = m.random_cell();
 
         if (ex != sx) | (ey != sy) {
-            m.set(sx, sy, START);
-            m.set(ex, ey, EXIT);
+            // m.set(sx, sy, START);
+            // m.set(ex, ey, EXIT);
             break;
         }
     }
 
-
-    // START, EXIT
-    // debug print - availability matrix is just an abstract
     for row in 0..LEVEL_HEIGHT {
         for col in 0..LEVEL_WIDTH {
-            match m.get(row, col) {
-                0b0000 => print!("X"),
-                0b0011 => print!("└"),
-                0b0101 => print!("|"),
-                0b1001 => print!("┘"),
-                0b0110 => print!("┌"),
-                0b1010 => print!("-"),
-                0b1100 => print!("┐"),
-
-                0b0111 => print!("├"),
-                0b1011 => print!("┴"),
-                0b1110 => print!("┬"),
-                0b1101 => print!("┤"),
-
-                0b1111 => print!("┼"),
-                0b11111 => print!("S"),
-                0b101111 => print!("E"),
-                _ => print!("."),
-            }
+            m.block_random(row, col);
+            // m.block_random(row, col);
         }
-        print!("\n");
     }
+        
+    let mut gfx: GFXMatrix = GFXMatrix::new (LEVEL_WIDTH, LEVEL_HEIGHT);
+    let x: usize = 3;
+    let y: usize = 3;
+
+    for row in 0..LEVEL_HEIGHT {
+        for col in 0..LEVEL_WIDTH {
+            gfx.data[gfx.rows*row+col] = walls[m.get(row, col)];
+        }
+    }
+    
+    // first try at graphics
+    for row in 0..LEVEL_HEIGHT {
+        for i in 0..ROOM_GFX_H {
+        for col in 0..LEVEL_WIDTH {
+                print!("{}", &gfx.data[gfx.rows*row+col][i*ROOM_GFX_W .. (i+1)*ROOM_GFX_W]);
+            }
+            print!("\n");
+        }
+    }
+
+    // for row in 0..LEVEL_HEIGHT {
+    //     for col in 0..LEVEL_WIDTH {
+    //         match m.get(row, col) {
+    //             0b0001 => print!("v"),
+    //             0b0010 => print!("<"),
+    //             0b0100 => print!("^"),
+    //             0b1000 => print!(">"),
+
+    //             0b0000 => print!("#"),
+    //             0b0011 => print!("└"),
+    //             0b0101 => print!("|"),
+    //             0b1001 => print!("┘"),
+    //             0b0110 => print!("┌"),
+    //             0b1010 => print!("-"),
+    //             0b1100 => print!("┐"),
+
+    //             0b0111 => print!("├"),
+    //             0b1011 => print!("┴"),
+    //             0b1110 => print!("┬"),
+    //             0b1101 => print!("┤"),
+
+    //             0b1111 => print!("┼"),
+    //             // 0b11111 => print!("S"),
+    //             // 0b101111 => print!("E"),
+    //             // _ => print!("({:#08b})", m.get(row, col)),
+    //             _ => print!("x"),
+    //         }
+    //     }
+    //     print!("\n");
+    // }
 }
 
 fn terminal() -> Result<(), Box<dyn std::error::Error>>{
