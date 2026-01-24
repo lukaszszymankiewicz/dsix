@@ -39,7 +39,8 @@ static EXIT: usize = 0b101111;
 static BLOCK_CHANCE: usize = 5;
 static ROOM_GFX_W: usize = 9;
 static ROOM_GFX_H: usize = 9;
-
+static WIN_GFX_W: usize = 21;
+static WIN_GFX_H: usize = 21;
 
 static walls: [&str; 16] = [
     "#################################################################################",
@@ -153,10 +154,10 @@ impl AMatrix {
     }
 
     fn unblock(&mut self, row: usize, col: usize, dir: Dir) {
-        self.modify_and(row, col, dir as usize);
+        self.modify_or(row, col, dir as usize);
 
         if let Some((n_row, n_col)) = self.get_neighbor(row, col, dir) {
-            self.modify_and(n_row, n_col, dir.opposite() as usize);
+            self.modify_or(n_row, n_col, dir.opposite() as usize);
         }
     }
 
@@ -166,6 +167,12 @@ impl AMatrix {
         }
     }
     
+    fn unblock_all(&mut self, row: usize, col: usize) {
+        for dir in [Dir::left, Dir::right, Dir::up, Dir::down] {
+            self.unblock(row, col, dir);
+        }
+    }
+
     fn random_cell(&mut self) -> (usize, usize) {
         return (
             self.rng.random_range(1..self.matrix.rows-1),
@@ -233,16 +240,22 @@ fn main() -> () {
     }
         
     let mut gfx: GFXMatrix = GFXMatrix::new (LEVEL_WIDTH, LEVEL_HEIGHT);
-    let x: usize = 3;
-    let y: usize = 3;
+    let x: usize = 4;
+    let y: usize = 4;
 
+    m.unblock_all(x, y);
+
+    let xp: usize = x * ROOM_GFX_W + ROOM_GFX_W/2;
+    let yp: usize = y * ROOM_GFX_H + ROOM_GFX_H/2;
+    
+    // setting gfx data
     for row in 0..LEVEL_HEIGHT {
         for col in 0..LEVEL_WIDTH {
             gfx.data[gfx.rows*row+col] = walls[m.get(row, col)];
         }
     }
     
-    // first try at graphics
+    // render gfx
     for row in 0..LEVEL_HEIGHT {
         for i in 0..ROOM_GFX_H {
         for col in 0..LEVEL_WIDTH {
@@ -251,37 +264,110 @@ fn main() -> () {
             print!("\n");
         }
     }
+     
+    let xp: usize = x * ROOM_GFX_W + ROOM_GFX_W/2;
+    let yp: usize = y * ROOM_GFX_H + ROOM_GFX_H/2;
+    
+    println!("hero starts {} {}", xp, yp);
+    let camera_st_x: usize = xp - WIN_GFX_W / 2;
+    let camera_st_y: usize = yp - WIN_GFX_W / 2;
+    let camera_end_x: usize = xp + WIN_GFX_W / 2 - 1;
+    let camera_end_y: usize = yp + WIN_GFX_W / 2 - 1;
 
-    // for row in 0..LEVEL_HEIGHT {
-    //     for col in 0..LEVEL_WIDTH {
-    //         match m.get(row, col) {
-    //             0b0001 => print!("v"),
-    //             0b0010 => print!("<"),
-    //             0b0100 => print!("^"),
-    //             0b1000 => print!(">"),
+    let st_cell_left: usize = camera_st_x / ROOM_GFX_W;
+    let end_cell_right: usize = camera_end_x / ROOM_GFX_W;
+    let st_cell_up: usize = camera_st_y / ROOM_GFX_H;
+    let end_cell_down: usize = camera_end_y / ROOM_GFX_H;
 
-    //             0b0000 => print!("#"),
-    //             0b0011 => print!("└"),
-    //             0b0101 => print!("|"),
-    //             0b1001 => print!("┘"),
-    //             0b0110 => print!("┌"),
-    //             0b1010 => print!("-"),
-    //             0b1100 => print!("┐"),
+    println!("camera starts {} ends {}", camera_st_x, camera_end_x);
 
-    //             0b0111 => print!("├"),
-    //             0b1011 => print!("┴"),
-    //             0b1110 => print!("┬"),
-    //             0b1101 => print!("┤"),
+    println!("@@@@@@@@@@@@@@@@@@@@@@@"); // zero line
+    
+    // render gfx
+    for row in st_cell_up..end_cell_down {
+        let mut trim_left: usize = 0;
+        let mut trim_up: usize = 0;
+        let mut trim_right: usize = 0;
+        let mut trim_down: usize = 0;
 
-    //             0b1111 => print!("┼"),
-    //             // 0b11111 => print!("S"),
-    //             // 0b101111 => print!("E"),
-    //             // _ => print!("({:#08b})", m.get(row, col)),
-    //             _ => print!("x"),
-    //         }
-    //     }
-    //     print!("\n");
-    // }
+        if ((row * ROOM_GFX_H) < camera_st_y) & (camera_st_y < ((row+1) * ROOM_GFX_H)) {
+            trim_up = 9 - (((row+1) * ROOM_GFX_H) - camera_st_y);
+        }
+
+        if ((row * ROOM_GFX_H) < camera_end_y) & (camera_end_y < ((row+1) * ROOM_GFX_H)) {
+            trim_down = camera_end_y - (row * ROOM_GFX_H) -1;
+        }
+
+        // println!("camera_x {} {}", camera_st_x, camera_end_x);
+        for i in (0+trim_up)..(ROOM_GFX_H-trim_down) {
+            print!("@");
+            for col in st_cell_left..end_cell_right+1 {
+
+                // println!("col ={}", col);
+                if ((col * ROOM_GFX_W) < camera_st_x) & (camera_st_x < ((col+1) * ROOM_GFX_W)) {
+                    trim_left = 9 - (((col+1) * ROOM_GFX_W) - camera_st_x);
+                }
+                
+                // 5*9 < 49   &&    49 < 6*9
+                // 45 < 49    &&  49 < 63
+                if ((col * ROOM_GFX_W) < camera_end_x) & (camera_end_x < ((col+1) * ROOM_GFX_W)) {
+                    // 49 - 5*9 
+                    trim_right = camera_end_x - (col * ROOM_GFX_W) - 1;
+                    // 4
+                }
+
+                // println!("col {} ", col); 
+                // println!("col+1*W {} ", (col+1)*9); 
+                // println!("camera_end_x {} ", camera_end_x); 
+                // println!("trim from left {}, trim from right {}", trim_left, trim_right); 
+
+                print!("{}", &gfx.data[
+                    gfx.rows*row+col
+                ][
+                    (i*ROOM_GFX_W) + trim_left .. ((i+1)*ROOM_GFX_W) - trim_right
+                ]);
+
+                trim_left = 0;
+                trim_right = 0;
+            }
+
+            print!("@\n");
+        }
+    }
+
+    println!("@@@@@@@@@@@@@@@@@@@@@@@"); // zero line
+
+    // debug availbilty
+    for row in 0..LEVEL_HEIGHT {
+        for col in 0..LEVEL_WIDTH {
+            match m.get(row, col) {
+                0b0001 => print!("v"),
+                0b0010 => print!("<"),
+                0b0100 => print!("^"),
+                0b1000 => print!(">"),
+
+                0b0000 => print!("#"),
+                0b0011 => print!("└"),
+                0b0101 => print!("|"),
+                0b1001 => print!("┘"),
+                0b0110 => print!("┌"),
+                0b1010 => print!("-"),
+                0b1100 => print!("┐"),
+
+                0b0111 => print!("├"),
+                0b1011 => print!("┴"),
+                0b1110 => print!("┬"),
+                0b1101 => print!("┤"),
+
+                0b1111 => print!("┼"),
+                // 0b11111 => print!("S"),
+                // 0b101111 => print!("E"),
+                // _ => print!("({:#08b})", m.get(row, col)),
+                _ => print!("x"),
+            }
+        }
+        print!("\n");
+    }
 }
 
 fn terminal() -> Result<(), Box<dyn std::error::Error>>{
@@ -312,3 +398,11 @@ fn terminal() -> Result<(), Box<dyn std::error::Error>>{
     println!("raw mode disabled!");
     Ok(())
 }
+
+// TODO:
+// put gfx into buffer
+// print buffer at once
+// create terminal window struct
+// window should have a border
+// but buffer there
+// add filling buffer method
