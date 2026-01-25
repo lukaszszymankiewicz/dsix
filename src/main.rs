@@ -39,10 +39,10 @@ static EXIT: usize = 0b101111;
 static BLOCK_CHANCE: usize = 5;
 static ROOM_GFX_W: usize = 9;
 static ROOM_GFX_H: usize = 9;
-static WIN_GFX_W: usize = 21;
-static WIN_GFX_H: usize = 21;
+static WIN_GFX_W: usize = 13;
+static WIN_GFX_H: usize = 13;
 
-static walls: [&str; 16] = [
+static WALLS: [&str; 16] = [
     "#################################################################################",
     "###...######...######...######...######...######...##############################",
     "##############################......###......###......###########################",
@@ -131,7 +131,7 @@ impl AMatrix {
 
     fn modify_or(&mut self, row: usize, col: usize, val: usize) { 
         let mut new = self.get(row, col);
-        new |= (1 << val);
+        new |= 1 << val;
         self.set(row, col, new);
     }
 
@@ -183,7 +183,7 @@ impl AMatrix {
     fn block_random(&mut self, row: usize, col: usize) {
         let v = self.get(row, col);
 
-        // Check if fully blocked (assuming 0 means all walls blocked)
+        // Check if fully blocked (assuming 0 means all WALLS blocked)
         // Adjust these masks based on your specific bit logic
         if v & 0b1111 == 0 { return; } 
 
@@ -245,129 +245,71 @@ fn main() -> () {
 
     m.unblock_all(x, y);
 
-    let xp: usize = x * ROOM_GFX_W + ROOM_GFX_W/2;
-    let yp: usize = y * ROOM_GFX_H + ROOM_GFX_H/2;
-    
     // setting gfx data
     for row in 0..LEVEL_HEIGHT {
         for col in 0..LEVEL_WIDTH {
-            gfx.data[gfx.rows*row+col] = walls[m.get(row, col)];
+            gfx.data[gfx.rows*row+col] = WALLS[m.get(row, col)];
         }
     }
     
-    // render gfx
-    for row in 0..LEVEL_HEIGHT {
-        for i in 0..ROOM_GFX_H {
-        for col in 0..LEVEL_WIDTH {
-                print!("{}", &gfx.data[gfx.rows*row+col][i*ROOM_GFX_W .. (i+1)*ROOM_GFX_W]);
-            }
-            print!("\n");
-        }
-    }
-     
     let xp: usize = x * ROOM_GFX_W + ROOM_GFX_W/2;
     let yp: usize = y * ROOM_GFX_H + ROOM_GFX_H/2;
     
-    println!("hero starts {} {}", xp, yp);
     let camera_st_x: usize = xp - WIN_GFX_W / 2;
     let camera_st_y: usize = yp - WIN_GFX_W / 2;
-    let camera_end_x: usize = xp + WIN_GFX_W / 2 - 1;
-    let camera_end_y: usize = yp + WIN_GFX_W / 2 - 1;
+    let camera_end_x: usize = xp + WIN_GFX_H / 2;
+    let camera_end_y: usize = yp + WIN_GFX_H / 2;
 
     let st_cell_left: usize = camera_st_x / ROOM_GFX_W;
     let end_cell_right: usize = camera_end_x / ROOM_GFX_W;
     let st_cell_up: usize = camera_st_y / ROOM_GFX_H;
     let end_cell_down: usize = camera_end_y / ROOM_GFX_H;
 
-    println!("camera starts {} ends {}", camera_st_x, camera_end_x);
-
-    println!("@@@@@@@@@@@@@@@@@@@@@@@"); // zero line
+    println!("X-------------X");
     
     // render gfx
-    for row in st_cell_up..end_cell_down {
+    for row in st_cell_up..end_cell_down+1 {
         let mut trim_left: usize = 0;
         let mut trim_up: usize = 0;
-        let mut trim_right: usize = 0;
-        let mut trim_down: usize = 0;
+        let mut trim_right: usize = ROOM_GFX_W;
+        let mut trim_down: usize = ROOM_GFX_H;
 
         if ((row * ROOM_GFX_H) < camera_st_y) & (camera_st_y < ((row+1) * ROOM_GFX_H)) {
-            trim_up = 9 - (((row+1) * ROOM_GFX_H) - camera_st_y);
+            trim_up = camera_st_y - (row * ROOM_GFX_H);
         }
 
         if ((row * ROOM_GFX_H) < camera_end_y) & (camera_end_y < ((row+1) * ROOM_GFX_H)) {
-            trim_down = camera_end_y - (row * ROOM_GFX_H) -1;
+            trim_down = camera_end_y - (row * ROOM_GFX_H) + 1;
         }
 
-        // println!("camera_x {} {}", camera_st_x, camera_end_x);
-        for i in (0+trim_up)..(ROOM_GFX_H-trim_down) {
-            print!("@");
+        for i in (0+trim_up)..trim_down {
+            print!("|");
             for col in st_cell_left..end_cell_right+1 {
 
-                // println!("col ={}", col);
-                if ((col * ROOM_GFX_W) < camera_st_x) & (camera_st_x < ((col+1) * ROOM_GFX_W)) {
-                    trim_left = 9 - (((col+1) * ROOM_GFX_W) - camera_st_x);
-                }
-                
-                // 5*9 < 49   &&    49 < 6*9
-                // 45 < 49    &&  49 < 63
-                if ((col * ROOM_GFX_W) < camera_end_x) & (camera_end_x < ((col+1) * ROOM_GFX_W)) {
-                    // 49 - 5*9 
-                    trim_right = camera_end_x - (col * ROOM_GFX_W) - 1;
-                    // 4
+                if ((col * ROOM_GFX_W) <=camera_st_x) & (camera_st_x < ((col+1) * ROOM_GFX_W)) {
+                    trim_left = camera_st_x - (col * ROOM_GFX_W);
                 }
 
-                // println!("col {} ", col); 
-                // println!("col+1*W {} ", (col+1)*9); 
-                // println!("camera_end_x {} ", camera_end_x); 
-                // println!("trim from left {}, trim from right {}", trim_left, trim_right); 
+                if ((col * ROOM_GFX_W) <= camera_end_x) & (camera_end_x < ((col+1) * ROOM_GFX_W)) {
+                    trim_right = camera_end_x - (col * ROOM_GFX_W) + 1;
+                }
 
                 print!("{}", &gfx.data[
                     gfx.rows*row+col
                 ][
-                    (i*ROOM_GFX_W) + trim_left .. ((i+1)*ROOM_GFX_W) - trim_right
+                    (i*ROOM_GFX_W) + trim_left .. (i*ROOM_GFX_W) + trim_right
                 ]);
 
                 trim_left = 0;
-                trim_right = 0;
+                trim_right = 9;
             }
 
-            print!("@\n");
+            print!("|\n");
         }
     }
 
-    println!("@@@@@@@@@@@@@@@@@@@@@@@"); // zero line
+    println!("X-------------X");
 
-    // debug availbilty
-    for row in 0..LEVEL_HEIGHT {
-        for col in 0..LEVEL_WIDTH {
-            match m.get(row, col) {
-                0b0001 => print!("v"),
-                0b0010 => print!("<"),
-                0b0100 => print!("^"),
-                0b1000 => print!(">"),
-
-                0b0000 => print!("#"),
-                0b0011 => print!("└"),
-                0b0101 => print!("|"),
-                0b1001 => print!("┘"),
-                0b0110 => print!("┌"),
-                0b1010 => print!("-"),
-                0b1100 => print!("┐"),
-
-                0b0111 => print!("├"),
-                0b1011 => print!("┴"),
-                0b1110 => print!("┬"),
-                0b1101 => print!("┤"),
-
-                0b1111 => print!("┼"),
-                // 0b11111 => print!("S"),
-                // 0b101111 => print!("E"),
-                // _ => print!("({:#08b})", m.get(row, col)),
-                _ => print!("x"),
-            }
-        }
-        print!("\n");
-    }
 }
 
 fn terminal() -> Result<(), Box<dyn std::error::Error>>{
@@ -406,3 +348,4 @@ fn terminal() -> Result<(), Box<dyn std::error::Error>>{
 // window should have a border
 // but buffer there
 // add filling buffer method
+// TODO: add rednding beinhd the level
