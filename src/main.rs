@@ -6,37 +6,35 @@ use crossterm::terminal::{ClearType, Clear, enable_raw_mode, disable_raw_mode};
 use crossterm::event::{read, Event, KeyEvent, KeyCode};
 use crossterm::execute;
 use crossterm::style;
-use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen, size};
+use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 
+#[allow(dead_code)]
 fn refresh_screen() {
     stdout().execute(Clear(ClearType::All)).unwrap();
 }
 
 #[derive(Copy, Clone)]
 enum Dir {
-    up = 0,
-    right = 1,
-    down = 2,
-    left = 3,
+    Up = 0,
+    Right = 1,
+    Down = 2,
+    Left = 3,
 }
 
 impl Dir {
     fn opposite(&self) -> Dir {
         match self {
-            Dir::left => Dir::right,
-            Dir::right => Dir::left,
-            Dir::up => Dir::down,
-            Dir::down => Dir::up,
+            Dir::Left => Dir::Right,
+            Dir::Right => Dir::Left,
+            Dir::Up => Dir::Down,
+            Dir::Down => Dir::Up,
         }
     }
 }
 
 static LEVEL_HEIGHT: usize = 9;
 static LEVEL_WIDTH: usize = 9;
-static BLOCK: usize = 0;
 static EMPTY: usize = 0b00001111;
-static START: usize = 0b11111;
-static EXIT: usize = 0b101111;
 static BLOCK_CHANCE: usize = 5;
 static ROOM_GFX_W: usize = 9;
 static ROOM_GFX_H: usize = 9;
@@ -71,12 +69,6 @@ struct Matrix {
 struct AMatrix {
     matrix: Matrix,
     rng: rand::rngs::ThreadRng,
-}
-
-struct TWindow {
-    matrix: Matrix,
-    rows: usize,
-    cols: usize,
 }
 
 impl Matrix {
@@ -127,10 +119,10 @@ impl AMatrix {
 
     fn get_neighbor(&self, row: usize, col: usize, dir: Dir) -> Option<(usize, usize)> {
         match dir {
-            Dir::left if col > 0 => Some((row, col - 1)),
-            Dir::right if col < self.matrix.cols - 1 => Some((row, col + 1)),
-            Dir::up if row > 0 => Some((row - 1, col)),
-            Dir::down if row < self.matrix.rows - 1 => Some((row + 1, col)),
+            Dir::Left if col > 0 => Some((row, col - 1)),
+            Dir::Right if col < self.matrix.cols - 1 => Some((row, col + 1)),
+            Dir::Up if row > 0 => Some((row - 1, col)),
+            Dir::Down if row < self.matrix.rows - 1 => Some((row + 1, col)),
             _ => None,
         }
     }
@@ -152,17 +144,18 @@ impl AMatrix {
     }
 
     fn block_all(&mut self, row: usize, col: usize) {
-        for dir in [Dir::left, Dir::right, Dir::up, Dir::down] {
+        for dir in [Dir::Left, Dir::Right, Dir::Up, Dir::Down] {
             self.block(row, col, dir);
         }
     }
     
     fn unblock_all(&mut self, row: usize, col: usize) {
-        for dir in [Dir::left, Dir::right, Dir::up, Dir::down] {
+        for dir in [Dir::Left, Dir::Right, Dir::Up, Dir::Down] {
             self.unblock(row, col, dir);
         }
     }
 
+    #[allow(dead_code)]
     fn random_cell(&mut self) -> (usize, usize) {
         return (
             self.rng.random_range(1..self.matrix.rows-1),
@@ -180,17 +173,17 @@ impl AMatrix {
         if self.rng.random_range(0..10) < BLOCK_CHANCE {
             let choice = self.rng.random_range(0..6);
             match choice {
-                0 => self.block(row, col, Dir::left),
-                1 => self.block(row, col, Dir::right),
-                2 => self.block(row, col, Dir::down),
-                3 => self.block(row, col, Dir::up),
+                0 => self.block(row, col, Dir::Left),
+                1 => self.block(row, col, Dir::Right),
+                2 => self.block(row, col, Dir::Down),
+                3 => self.block(row, col, Dir::Up),
                 4 => {
-                    self.block(row, col, Dir::up);
-                    self.block(row, col, Dir::down);
+                    self.block(row, col, Dir::Up);
+                    self.block(row, col, Dir::Down);
                 },
                 5 => {
-                    self.block(row, col, Dir::right);
-                    self.block(row, col, Dir::left);
+                    self.block(row, col, Dir::Right);
+                    self.block(row, col, Dir::Left);
                 }
                 _ => unreachable!()
             }
@@ -269,9 +262,9 @@ fn render_map(hero_pos_x: usize, hero_pos_y: usize, m: &AMatrix) -> String {
                 // for one draw line only
                 let left_bound = (i*ROOM_GFX_W) + trim_left;
                 let right_bound = (i*ROOM_GFX_W) + trim_right;
-                let line = vec!(&WALLS[m.get(row, col)] [left_bound .. right_bound]);
+                let line = &WALLS[m.get(row, col)][left_bound .. right_bound];
 
-                buf.push_str(&WALLS[m.get(row, col)][left_bound .. right_bound]);
+                buf.push_str(line);
 
                 trim_left = 0;
                 trim_right = 9;
@@ -295,8 +288,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
     execute!(stdout(), EnterAlternateScreen, Clear(ClearType::All))?;
 
     // This is the start window coords
-    let map_window_x: u16 = 10;
-    let map_window_y: u16 = 6;
+    let map_window_pos_x: u16 = 10;
+    let map_window_pos_y: u16 = 6;
     // 126, 39
     // window -> 80, 30
     // println!("terminal size: {:?}", size().unwrap());
@@ -305,13 +298,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
     
     // window render function
     let mut rmap: String = render_map(hero_pos_x, hero_pos_y, &map);
-    stdout().execute(cursor::MoveTo(map_window_x, map_window_y)).unwrap();
+    stdout().execute(cursor::MoveTo(map_window_pos_x, map_window_pos_y)).unwrap();
     for window_line in 0..WIN_GFX_H {
         stdout().execute(style::Print(&rmap[window_line*WIN_GFX_W..(window_line+1)*WIN_GFX_W])).unwrap();
-        stdout().execute(cursor::MoveTo(map_window_x, map_window_y+window_line as u16)).unwrap();
+        stdout().execute(cursor::MoveTo(map_window_pos_x, map_window_pos_y+window_line as u16)).unwrap();
     }
 
-    stdout().execute(cursor::MoveTo(map_window_x + (WIN_GFX_W as u16/2), map_window_y + (WIN_GFX_H as u16/2))).unwrap();
+    stdout().execute(cursor::MoveTo(map_window_pos_x + (WIN_GFX_W as u16/2), map_window_pos_y -1 + (WIN_GFX_H as u16/2))).unwrap();
     stdout().execute(style::Print('@')).unwrap();
 
     loop {
@@ -325,27 +318,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
             },
             Err(_) => todo!(),
         };
-        refresh_screen();
 
         // window render function
         rmap = render_map(hero_pos_x, hero_pos_y, &map);
-        stdout().execute(cursor::MoveTo(map_window_x, map_window_y)).unwrap();
+        stdout().execute(cursor::MoveTo(map_window_pos_x, map_window_pos_y)).unwrap();
         for window_line in 0..WIN_GFX_H {
             stdout().execute(style::Print(&rmap[window_line*WIN_GFX_W..(window_line+1)*WIN_GFX_W])).unwrap();
-            stdout().execute(cursor::MoveTo(map_window_x, map_window_y+window_line as u16)).unwrap();
+            stdout().execute(cursor::MoveTo(map_window_pos_x, map_window_pos_y+window_line as u16)).unwrap();
         }
 
-        stdout().execute(cursor::MoveTo(map_window_x + (WIN_GFX_W as u16/2), map_window_y + (WIN_GFX_H as u16/2))).unwrap();
+        stdout().execute(cursor::MoveTo(map_window_pos_x + (WIN_GFX_W as u16/2), map_window_pos_y -1 + (WIN_GFX_H as u16/2))).unwrap();
         stdout().execute(style::Print('@')).unwrap();
     }
 
     execute!(stdout(), LeaveAlternateScreen)?;
     disable_raw_mode()?; 
+    stdout().execute(cursor::Show).unwrap();
     Ok(())
 }
 
 // TODO:
-// a) check moving
 // b) wrap rendering level into somekind of Window
 // c) Window should have method to add somekind of image/text on in
 // d) add window with level
