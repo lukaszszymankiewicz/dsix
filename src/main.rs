@@ -198,52 +198,41 @@ impl AMatrix {
     }
 }
 
-fn render_map() -> String {
-    // level generation
-    let mut m: AMatrix = AMatrix::new();
-    let mut buf: String = String::new();
-
+fn generate_map(hero_pos_x: usize, hero_pos_y: usize) -> AMatrix {
+    let mut map: AMatrix = AMatrix::new();
+    
+    // block vertical borders
     for col in 0..LEVEL_WIDTH {
-        m.block_all(0, col);
-        m.block_all(LEVEL_HEIGHT-1, col);
+        map.block_all(0, col);
+        map.block_all(LEVEL_HEIGHT-1, col);
     }
 
+    // block horizontal borders
     for row in 0..LEVEL_HEIGHT {
-        m.block_all(row, 0);
-        m.block_all(row, LEVEL_WIDTH-1);
+        map.block_all(row, 0);
+        map.block_all(row, LEVEL_WIDTH-1);
     }
-
-    // random start cell
-    // loop {
-    //     let (sx, sy) = m.random_cell();
-    //     let (ex, ey) = m.random_cell();
-
-    //     if (ex != sx) | (ey != sy) {
-    //         // m.set(sx, sy, START);
-    //         // m.set(ex, ey, EXIT);
-    //         break;
-    //     }
-    // }
-
+    
+    // generate random paths
     for row in 0..LEVEL_HEIGHT {
         for col in 0..LEVEL_WIDTH {
-            m.block_random(row, col);
-            // m.block_random(row, col);
+            map.block_random(row, col);
         }
     }
-    //hero state 
-    let x: usize = 4;
-    let y: usize = 4;
 
-    m.unblock_all(x, y);
+    // hero position should be transalted to cell
+    map.unblock_all(hero_pos_x/ROOM_GFX_W, hero_pos_y/ROOM_GFX_H);
 
-    let xp: usize = x * ROOM_GFX_W + ROOM_GFX_W/2;
-    let yp: usize = y * ROOM_GFX_H + ROOM_GFX_H/2;
-    
-    let camera_st_x: usize = xp - WIN_GFX_W / 2;
-    let camera_st_y: usize = yp - WIN_GFX_W / 2;
-    let camera_end_x: usize = xp + WIN_GFX_H / 2;
-    let camera_end_y: usize = yp + WIN_GFX_H / 2;
+    return map;
+}
+
+fn render_map(hero_pos_x: usize, hero_pos_y: usize, m: &AMatrix) -> String {
+    let mut buf: String = String::new();
+
+    let camera_st_x: usize = hero_pos_x - WIN_GFX_W / 2;
+    let camera_st_y: usize = hero_pos_y - WIN_GFX_W / 2;
+    let camera_end_x: usize = hero_pos_x + WIN_GFX_H / 2;
+    let camera_end_y: usize = hero_pos_y + WIN_GFX_H / 2;
 
     let st_cell_left: usize = camera_st_x / ROOM_GFX_W;
     let end_cell_right: usize = camera_end_x / ROOM_GFX_W;
@@ -293,37 +282,61 @@ fn render_map() -> String {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>>{
+    // GAME
+    let x: usize = 4;
+    let y: usize = 4;
+    let mut hero_pos_x: usize = x * ROOM_GFX_W + ROOM_GFX_W/2;
+    let mut hero_pos_y: usize = y * ROOM_GFX_H + ROOM_GFX_H/2;
+
+    let map: AMatrix = generate_map(hero_pos_x, hero_pos_y);
+
+    // GFX
     enable_raw_mode()?;
     execute!(stdout(), EnterAlternateScreen, Clear(ClearType::All))?;
 
     // This is the start window coords
-    let x = 10;
-    let y = 6;
+    let map_window_x: u16 = 10;
+    let map_window_y: u16 = 6;
     // 126, 39
     // window -> 80, 30
     // println!("terminal size: {:?}", size().unwrap());
 
-    stdout().execute(cursor::MoveTo(x, y)).unwrap();
-    let map: String = render_map();
+    stdout().execute(cursor::Hide).unwrap();
     
-    for winy in 0..WIN_GFX_H {
-        stdout().execute(style::Print(&map[winy*WIN_GFX_W..(winy+1)*WIN_GFX_W])).unwrap();
-        stdout().execute(cursor::MoveTo(x, y+winy as u16)).unwrap();
+    // window render function
+    let mut rmap: String = render_map(hero_pos_x, hero_pos_y, &map);
+    stdout().execute(cursor::MoveTo(map_window_x, map_window_y)).unwrap();
+    for window_line in 0..WIN_GFX_H {
+        stdout().execute(style::Print(&rmap[window_line*WIN_GFX_W..(window_line+1)*WIN_GFX_W])).unwrap();
+        stdout().execute(cursor::MoveTo(map_window_x, map_window_y+window_line as u16)).unwrap();
     }
+
+    stdout().execute(cursor::MoveTo(map_window_x + (WIN_GFX_W as u16/2), map_window_y + (WIN_GFX_H as u16/2))).unwrap();
+    stdout().execute(style::Print('@')).unwrap();
 
     loop {
         match read() {
             Ok(k) => match k {
-                Event::Key(KeyEvent{code: KeyCode::Up, ..}) => stdout().execute(cursor::MoveUp(1)),
-                Event::Key(KeyEvent{code: KeyCode::Down, ..}) => stdout().execute(cursor::MoveDown(1)),
-                Event::Key(KeyEvent{code: KeyCode::Right, ..}) => stdout().execute(cursor::MoveRight(1)),
-                Event::Key(KeyEvent{code: KeyCode::Left, ..}) => stdout().execute(cursor::MoveLeft(1)),
-                Event::Key(KeyEvent{code: KeyCode::Char('k'), ..}) => break,
+                Event::Key(KeyEvent{code: KeyCode::Up, ..}) => hero_pos_y-=1,
+                Event::Key(KeyEvent{code: KeyCode::Down, ..}) => hero_pos_y+=1,
+                Event::Key(KeyEvent{code: KeyCode::Right, ..}) => hero_pos_x+=1,
+                Event::Key(KeyEvent{code: KeyCode::Left, ..}) => hero_pos_x-=1,
                 _ => break
             },
             Err(_) => todo!(),
         };
         refresh_screen();
+
+        // window render function
+        rmap = render_map(hero_pos_x, hero_pos_y, &map);
+        stdout().execute(cursor::MoveTo(map_window_x, map_window_y)).unwrap();
+        for window_line in 0..WIN_GFX_H {
+            stdout().execute(style::Print(&rmap[window_line*WIN_GFX_W..(window_line+1)*WIN_GFX_W])).unwrap();
+            stdout().execute(cursor::MoveTo(map_window_x, map_window_y+window_line as u16)).unwrap();
+        }
+
+        stdout().execute(cursor::MoveTo(map_window_x + (WIN_GFX_W as u16/2), map_window_y + (WIN_GFX_H as u16/2))).unwrap();
+        stdout().execute(style::Print('@')).unwrap();
     }
 
     execute!(stdout(), LeaveAlternateScreen)?;
@@ -332,10 +345,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 }
 
 // TODO:
-// check moving
-// wrap rendering level into somekind of Window
-// Window should have method to add somekind of image/text on in
-// add window with level
-// add window with stats
-// add method to add images to the level window
-//
+// a) check moving
+// b) wrap rendering level into somekind of Window
+// c) Window should have method to add somekind of image/text on in
+// d) add window with level
+// e) add window with stats
+// f) add method to add images to the level window
