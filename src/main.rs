@@ -1,3 +1,4 @@
+use std::io;
 use std::io::{stdout};
 
 use rand::Rng;
@@ -60,6 +61,30 @@ static WALLS: [&str; 16] = [
     "###...######...######...###...........................###...######...######...###",
 ];
 
+struct TerminalImage {
+    data: String,
+    pos_x: isize,
+    pos_y: isize,
+    rows: usize,
+    cols: usize,
+}
+
+struct TerminalWindow {
+    imgs: Vec<TerminalImage>,
+    rows: usize,
+    cols: usize,
+    pos_x: usize,
+    pos_y: usize,
+}
+
+struct TerminalScreen {
+    rows: usize,
+    cols: usize,
+    n_winds: usize,
+    winds: Vec<TerminalWindow>,
+    screen: io::Stdout
+}
+
 struct Matrix {
     rows: usize,
     cols: usize,
@@ -69,6 +94,91 @@ struct Matrix {
 struct AMatrix {
     matrix: Matrix,
     rng: rand::rngs::ThreadRng,
+}
+
+impl TerminalWindow {
+    fn new(rows: usize, cols: usize, pos_x: usize, pos_y: usize) -> TerminalWindow {
+        return TerminalWindow{
+            imgs: Vec::new(),
+            rows: rows,
+            cols: cols,
+            pos_x: pos_x,
+            pos_y: pos_y,
+        }
+    }
+
+    fn push_images(&mut self, imgs: Vec<TerminalImage>) {
+        self.imgs = imgs;
+    }
+
+    fn push_image(&mut self, img: TerminalImage) {
+        self.imgs.push(img);
+    }
+}
+
+impl TerminalScreen {
+    fn new(rows: usize, cols: usize) -> TerminalScreen {
+        return TerminalScreen{
+            rows: rows,
+            cols: cols,
+            winds: Vec::new(),
+            n_winds: 0,
+            screen: io::stdout()
+        }
+    }
+
+    fn add_window(&mut self, window: TerminalWindow) {
+        self.winds.push(window);
+    }
+
+    fn render_all_windows(&mut self) {
+        for wind in &self.winds {
+            
+            self.screen.execute(cursor::MoveTo(
+                (wind.pos_x - 1) as u16,
+                (wind.pos_y - 1) as u16)
+            ).unwrap();
+            stdout().execute(style::Print("X-------------X")).unwrap();
+            
+
+            for y in 0..wind.cols {
+
+                self.screen.execute(cursor::MoveTo(
+                    (wind.pos_x - 1) as u16,
+                    (wind.pos_y + y) as u16)
+                ).unwrap();
+                stdout().execute(style::Print("|")).unwrap();
+
+                self.screen.execute(cursor::MoveTo(
+                    (wind.pos_x + wind.rows) as u16,
+                    (wind.pos_y + y) as u16)
+                ).unwrap();
+                stdout().execute(style::Print("|")).unwrap();
+            }
+
+            for img in &wind.imgs {
+                self.screen.execute(cursor::MoveTo(
+                    (wind.pos_x as isize + img.pos_x) as u16,
+                    (wind.pos_y as isize + img.pos_y) as u16)
+                ).unwrap();
+
+                for line in 0..img.cols {
+                    stdout().execute(style::Print(&img.data[line*img.rows..(line+1)*img.rows])).unwrap();
+                    // TODO: This should be calculated with great care!
+                    stdout().execute(cursor::MoveTo(
+                            (wind.pos_x as isize + img.pos_x) as u16,
+                            (wind.pos_y as isize + img.pos_y + line as isize) as u16)
+                    ).unwrap();
+                }
+            }
+
+            self.screen.execute(cursor::MoveTo(
+                (wind.pos_x - 1) as u16,
+                (wind.pos_y as isize + wind.cols as isize) as u16)
+            ).unwrap();
+            stdout().execute(style::Print("X-------------X")).unwrap();
+        }
+    }
 }
 
 impl Matrix {
@@ -219,6 +329,46 @@ fn generate_map(hero_pos_x: usize, hero_pos_y: usize) -> AMatrix {
     return map;
 }
 
+fn get_map_image(
+    hero_pos_x: usize,
+    hero_pos_y: usize,
+    win_w: usize,
+    win_h: usize,
+    m: &AMatrix
+) -> Vec<TerminalImage> {
+    let mut imgs: Vec<TerminalImage> = Vec::new();
+
+    let camera_st_x: usize = hero_pos_x - win_w / 2;
+    let camera_st_y: usize = hero_pos_y - win_w / 2;
+    let camera_end_x: usize = hero_pos_x + win_h / 2;
+    let camera_end_y: usize = hero_pos_y + win_h / 2;
+
+    let st_cell_left: usize = camera_st_x / win_w;
+    let end_cell_right: usize = camera_end_x / win_w;
+    let st_cell_up: usize = camera_st_y / win_h;
+    let end_cell_down: usize = camera_end_y / win_h;
+    
+    // get images and their pos
+    for row in st_cell_up..end_cell_down+1 {
+
+        for col in st_cell_left..end_cell_right+1 {
+
+            imgs.push(
+                TerminalImage{
+                    data: (&WALLS[m.get(row, col)]).to_string(),
+                    rows: 9,
+                    cols: 9,
+                    pos_x: ((col * ROOM_GFX_W) as isize) - camera_st_x as isize,
+                    pos_y: ((row * ROOM_GFX_H) as isize) - camera_st_y as isize
+                }
+            );
+
+        }
+    }
+
+    return imgs; 
+}
+
 fn render_map(hero_pos_x: usize, hero_pos_y: usize, m: &AMatrix) -> String {
     let mut buf: String = String::new();
 
@@ -283,6 +433,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 
     let map: AMatrix = generate_map(hero_pos_x, hero_pos_y);
 
+    // UI layout
+    let mut map_window: TerminalWindow = TerminalWindow::new(13, 13, 4, 4); 
+    let mut screen = TerminalScreen::new(20, 20);
+
+    screen.add_window(map_window);
+
+    let sample_img = TerminalImage{data: (&WALLS[3]).to_string(), rows: 9, cols: 9, pos_x: 3, pos_y: 3 };
+    screen.winds[0].push_image(sample_img);
+
     // GFX
     enable_raw_mode()?;
     execute!(stdout(), EnterAlternateScreen, Clear(ClearType::All))?;
@@ -290,22 +449,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
     // This is the start window coords
     let map_window_pos_x: u16 = 10;
     let map_window_pos_y: u16 = 6;
-    // 126, 39
-    // window -> 80, 30
-    // println!("terminal size: {:?}", size().unwrap());
 
     stdout().execute(cursor::Hide).unwrap();
     
     // window render function
-    let mut rmap: String = render_map(hero_pos_x, hero_pos_y, &map);
-    stdout().execute(cursor::MoveTo(map_window_pos_x, map_window_pos_y)).unwrap();
-    for window_line in 0..WIN_GFX_H {
-        stdout().execute(style::Print(&rmap[window_line*WIN_GFX_W..(window_line+1)*WIN_GFX_W])).unwrap();
-        stdout().execute(cursor::MoveTo(map_window_pos_x, map_window_pos_y+window_line as u16)).unwrap();
-    }
+    // this functions must be global but I do not care at all
 
-    stdout().execute(cursor::MoveTo(map_window_pos_x + (WIN_GFX_W as u16/2), map_window_pos_y -1 + (WIN_GFX_H as u16/2))).unwrap();
-    stdout().execute(style::Print('@')).unwrap();
+    screen.render_all_windows();
+
+    // stdout().execute(cursor::MoveTo(map_window_pos_x, map_window_pos_y)).unwrap();
+    // for window_line in 0..WIN_GFX_H {
+    //     stdout().execute(style::Print(&rmap[window_line*WIN_GFX_W..(window_line+1)*WIN_GFX_W])).unwrap();
+    //     stdout().execute(cursor::MoveTo(map_window_pos_x, map_window_pos_y+window_line as u16)).unwrap();
+    // }
+
+    // stdout().execute(cursor::MoveTo(map_window_pos_x + (WIN_GFX_W as u16/2), map_window_pos_y -1 + (WIN_GFX_H as u16/2))).unwrap();
+    // stdout().execute(style::Print('@')).unwrap();
 
     loop {
         match read() {
@@ -320,15 +479,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
         };
 
         // window render function
-        rmap = render_map(hero_pos_x, hero_pos_y, &map);
-        stdout().execute(cursor::MoveTo(map_window_pos_x, map_window_pos_y)).unwrap();
-        for window_line in 0..WIN_GFX_H {
-            stdout().execute(style::Print(&rmap[window_line*WIN_GFX_W..(window_line+1)*WIN_GFX_W])).unwrap();
-            stdout().execute(cursor::MoveTo(map_window_pos_x, map_window_pos_y+window_line as u16)).unwrap();
-        }
+        // rmap = render_map(hero_pos_x, hero_pos_y, &map);
+        // stdout().execute(cursor::MoveTo(map_window_pos_x, map_window_pos_y)).unwrap();
+        // for window_line in 0..WIN_GFX_H {
+        //     stdout().execute(style::Print(&rmap[window_line*WIN_GFX_W..(window_line+1)*WIN_GFX_W])).unwrap();
+        //     stdout().execute(cursor::MoveTo(map_window_pos_x, map_window_pos_y+window_line as u16)).unwrap();
+        // }
 
-        stdout().execute(cursor::MoveTo(map_window_pos_x + (WIN_GFX_W as u16/2), map_window_pos_y -1 + (WIN_GFX_H as u16/2))).unwrap();
-        stdout().execute(style::Print('@')).unwrap();
+        // stdout().execute(cursor::MoveTo(map_window_pos_x + (WIN_GFX_W as u16/2), map_window_pos_y -1 + (WIN_GFX_H as u16/2))).unwrap();
+        // stdout().execute(style::Print('@')).unwrap();
     }
 
     execute!(stdout(), LeaveAlternateScreen)?;
@@ -343,3 +502,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 // d) add window with level
 // e) add window with stats
 // f) add method to add images to the level window
+// g) implement queue!
