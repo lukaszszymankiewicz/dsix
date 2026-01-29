@@ -5,7 +5,8 @@ use crossterm::{ExecutableCommand, cursor};
 use crossterm::terminal::{ClearType, Clear, enable_raw_mode, disable_raw_mode};
 use crossterm::event::{read, Event, KeyEvent, KeyCode};
 use crossterm::execute;
-use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::style;
+use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen, size};
 
 fn refresh_screen() {
     stdout().execute(Clear(ClearType::All)).unwrap();
@@ -67,15 +68,15 @@ struct Matrix {
     data: Vec<usize>
 }
 
-struct GFXMatrix {
-    rows: usize,
-    cols: usize,
-    data: Vec<& 'static str> // each string is 9 * 9 chars long
-}
-
 struct AMatrix {
     matrix: Matrix,
     rng: rand::rngs::ThreadRng,
+}
+
+struct TWindow {
+    matrix: Matrix,
+    rows: usize,
+    cols: usize,
 }
 
 impl Matrix {
@@ -94,17 +95,6 @@ impl Matrix {
     fn set(&mut self, row: usize, col: usize, val: usize) { 
         self.data[self.rows * row + col] = val;
     }
-}
-
-impl GFXMatrix {
-    fn new(rows: usize, cols: usize) -> GFXMatrix {
-        return GFXMatrix{
-            rows: rows,
-            cols: cols,
-            data: vec!["........."; cols * rows],
-        };
-    }
-
 }
 
 impl AMatrix {
@@ -208,8 +198,10 @@ impl AMatrix {
     }
 }
 
-fn main() -> () {
+fn render_map() -> String {
+    // level generation
     let mut m: AMatrix = AMatrix::new();
+    let mut buf: String = String::new();
 
     for col in 0..LEVEL_WIDTH {
         m.block_all(0, col);
@@ -221,16 +213,17 @@ fn main() -> () {
         m.block_all(row, LEVEL_WIDTH-1);
     }
 
-    loop {
-        let (sx, sy) = m.random_cell();
-        let (ex, ey) = m.random_cell();
+    // random start cell
+    // loop {
+    //     let (sx, sy) = m.random_cell();
+    //     let (ex, ey) = m.random_cell();
 
-        if (ex != sx) | (ey != sy) {
-            // m.set(sx, sy, START);
-            // m.set(ex, ey, EXIT);
-            break;
-        }
-    }
+    //     if (ex != sx) | (ey != sy) {
+    //         // m.set(sx, sy, START);
+    //         // m.set(ex, ey, EXIT);
+    //         break;
+    //     }
+    // }
 
     for row in 0..LEVEL_HEIGHT {
         for col in 0..LEVEL_WIDTH {
@@ -238,20 +231,12 @@ fn main() -> () {
             // m.block_random(row, col);
         }
     }
-        
-    let mut gfx: GFXMatrix = GFXMatrix::new (LEVEL_WIDTH, LEVEL_HEIGHT);
+    //hero state 
     let x: usize = 4;
     let y: usize = 4;
 
     m.unblock_all(x, y);
 
-    // setting gfx data
-    for row in 0..LEVEL_HEIGHT {
-        for col in 0..LEVEL_WIDTH {
-            gfx.data[gfx.rows*row+col] = WALLS[m.get(row, col)];
-        }
-    }
-    
     let xp: usize = x * ROOM_GFX_W + ROOM_GFX_W/2;
     let yp: usize = y * ROOM_GFX_H + ROOM_GFX_H/2;
     
@@ -265,8 +250,6 @@ fn main() -> () {
     let st_cell_up: usize = camera_st_y / ROOM_GFX_H;
     let end_cell_down: usize = camera_end_y / ROOM_GFX_H;
 
-    println!("X-------------X");
-    
     // render gfx
     for row in st_cell_up..end_cell_down+1 {
         let mut trim_left: usize = 0;
@@ -283,7 +266,6 @@ fn main() -> () {
         }
 
         for i in (0+trim_up)..trim_down {
-            print!("|");
             for col in st_cell_left..end_cell_right+1 {
 
                 if ((col * ROOM_GFX_W) <=camera_st_x) & (camera_st_x < ((col+1) * ROOM_GFX_W)) {
@@ -293,32 +275,41 @@ fn main() -> () {
                 if ((col * ROOM_GFX_W) <= camera_end_x) & (camera_end_x < ((col+1) * ROOM_GFX_W)) {
                     trim_right = camera_end_x - (col * ROOM_GFX_W) + 1;
                 }
+                
+                // this function translates availability matrix to walls representation
+                // for one draw line only
+                let left_bound = (i*ROOM_GFX_W) + trim_left;
+                let right_bound = (i*ROOM_GFX_W) + trim_right;
+                let line = vec!(&WALLS[m.get(row, col)] [left_bound .. right_bound]);
 
-                print!("{}", &gfx.data[
-                    gfx.rows*row+col
-                ][
-                    (i*ROOM_GFX_W) + trim_left .. (i*ROOM_GFX_W) + trim_right
-                ]);
+                buf.push_str(&WALLS[m.get(row, col)][left_bound .. right_bound]);
 
                 trim_left = 0;
                 trim_right = 9;
             }
-
-            print!("|\n");
         }
     }
-
-    println!("X-------------X");
-
+    return buf; 
 }
 
-fn terminal() -> Result<(), Box<dyn std::error::Error>>{
+fn main() -> Result<(), Box<dyn std::error::Error>>{
     enable_raw_mode()?;
     execute!(stdout(), EnterAlternateScreen, Clear(ClearType::All))?;
-    let x = 5;
-    let y = 5;
+
+    // This is the start window coords
+    let x = 10;
+    let y = 6;
+    // 126, 39
+    // window -> 80, 30
+    // println!("terminal size: {:?}", size().unwrap());
 
     stdout().execute(cursor::MoveTo(x, y)).unwrap();
+    let map: String = render_map();
+    
+    for winy in 0..WIN_GFX_H {
+        stdout().execute(style::Print(&map[winy*WIN_GFX_W..(winy+1)*WIN_GFX_W])).unwrap();
+        stdout().execute(cursor::MoveTo(x, y+winy as u16)).unwrap();
+    }
 
     loop {
         match read() {
@@ -328,7 +319,7 @@ fn terminal() -> Result<(), Box<dyn std::error::Error>>{
                 Event::Key(KeyEvent{code: KeyCode::Right, ..}) => stdout().execute(cursor::MoveRight(1)),
                 Event::Key(KeyEvent{code: KeyCode::Left, ..}) => stdout().execute(cursor::MoveLeft(1)),
                 Event::Key(KeyEvent{code: KeyCode::Char('k'), ..}) => break,
-                _ => todo!()
+                _ => break
             },
             Err(_) => todo!(),
         };
@@ -337,15 +328,14 @@ fn terminal() -> Result<(), Box<dyn std::error::Error>>{
 
     execute!(stdout(), LeaveAlternateScreen)?;
     disable_raw_mode()?; 
-    println!("raw mode disabled!");
     Ok(())
 }
 
 // TODO:
-// put gfx into buffer
-// print buffer at once
-// create terminal window struct
-// window should have a border
-// but buffer there
-// add filling buffer method
-// TODO: add rednding beinhd the level
+// check moving
+// wrap rendering level into somekind of Window
+// Window should have method to add somekind of image/text on in
+// add window with level
+// add window with stats
+// add method to add images to the level window
+//
