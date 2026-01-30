@@ -134,25 +134,17 @@ impl TerminalScreen {
     fn render_all_windows(&mut self) {
         for wind in &self.winds {
             
-            self.screen.execute(cursor::MoveTo(
-                (wind.pos_x - 1) as u16,
-                (wind.pos_y - 1) as u16)
-            ).unwrap();
+            self.screen.execute(cursor::MoveTo((wind.pos_x - 1) as u16, (wind.pos_y - 1) as u16)).unwrap();
             // border
+            // TODO: add border to somekind of image
+            // TODO: maybe each window should have an integer indicating border style?
             stdout().execute(style::Print("X-------------X")).unwrap();
 
             for y in 0..wind.cols {
 
-                self.screen.execute(cursor::MoveTo(
-                    (wind.pos_x - 1) as u16,
-                    (wind.pos_y + y) as u16)
-                ).unwrap();
+                self.screen.execute(cursor::MoveTo( (wind.pos_x - 1) as u16, (wind.pos_y + y) as u16)).unwrap();
                 stdout().execute(style::Print("|")).unwrap();
-
-                self.screen.execute(cursor::MoveTo(
-                    (wind.pos_x + wind.rows) as u16,
-                    (wind.pos_y + y) as u16)
-                ).unwrap();
+                self.screen.execute(cursor::MoveTo( (wind.pos_x + wind.rows) as u16, (wind.pos_y + y) as u16)).unwrap();
                 stdout().execute(style::Print("|")).unwrap();
             }
 
@@ -200,10 +192,7 @@ impl TerminalScreen {
             }
             
             // border
-            self.screen.execute(cursor::MoveTo(
-                (wind.pos_x - 1) as u16,
-                (wind.pos_y as isize + wind.cols as isize) as u16)
-            ).unwrap();
+            self.screen.execute(cursor::MoveTo( (wind.pos_x - 1) as u16, (wind.pos_y as isize + wind.cols as isize) as u16)).unwrap();
             stdout().execute(style::Print("X-------------X")).unwrap();
         }
     }
@@ -357,7 +346,7 @@ fn generate_map(hero_pos_x: usize, hero_pos_y: usize) -> AMatrix {
     return map;
 }
 
-fn get_map_image(
+fn get_map_images(
     hero_pos_x: usize,
     hero_pos_y: usize,
     win_w: usize,
@@ -378,9 +367,8 @@ fn get_map_image(
     
     // get images and their pos
     for row in st_cell_up..end_cell_down+1 {
-
         for col in st_cell_left..end_cell_right+1 {
-
+            // TODO: use usize and calculate trimming
             imgs.push(
                 TerminalImage{
                     data: (&WALLS[m.get(row, col)]).to_string(),
@@ -395,61 +383,6 @@ fn get_map_image(
     }
 
     return imgs; 
-}
-
-fn render_map(hero_pos_x: usize, hero_pos_y: usize, m: &AMatrix) -> String {
-    let mut buf: String = String::new();
-
-    let camera_st_x: usize = hero_pos_x - WIN_GFX_W / 2;
-    let camera_st_y: usize = hero_pos_y - WIN_GFX_W / 2;
-    let camera_end_x: usize = hero_pos_x + WIN_GFX_H / 2;
-    let camera_end_y: usize = hero_pos_y + WIN_GFX_H / 2;
-
-    let st_cell_left: usize = camera_st_x / ROOM_GFX_W;
-    let end_cell_right: usize = camera_end_x / ROOM_GFX_W;
-    let st_cell_up: usize = camera_st_y / ROOM_GFX_H;
-    let end_cell_down: usize = camera_end_y / ROOM_GFX_H;
-
-    // render gfx
-    for row in st_cell_up..end_cell_down+1 {
-        let mut trim_left: usize = 0;
-        let mut trim_up: usize = 0;
-        let mut trim_right: usize = ROOM_GFX_W;
-        let mut trim_down: usize = ROOM_GFX_H;
-
-        if ((row * ROOM_GFX_H) < camera_st_y) & (camera_st_y < ((row+1) * ROOM_GFX_H)) {
-            trim_up = camera_st_y - (row * ROOM_GFX_H);
-        }
-
-        if ((row * ROOM_GFX_H) < camera_end_y) & (camera_end_y < ((row+1) * ROOM_GFX_H)) {
-            trim_down = camera_end_y - (row * ROOM_GFX_H) + 1;
-        }
-
-        for i in (0+trim_up)..trim_down {
-            for col in st_cell_left..end_cell_right+1 {
-
-                if ((col * ROOM_GFX_W) <=camera_st_x) & (camera_st_x < ((col+1) * ROOM_GFX_W)) {
-                    trim_left = camera_st_x - (col * ROOM_GFX_W);
-                }
-
-                if ((col * ROOM_GFX_W) <= camera_end_x) & (camera_end_x < ((col+1) * ROOM_GFX_W)) {
-                    trim_right = camera_end_x - (col * ROOM_GFX_W) + 1;
-                }
-                
-                // this function translates availability matrix to walls representation
-                // for one draw line only
-                let left_bound = (i*ROOM_GFX_W) + trim_left;
-                let right_bound = (i*ROOM_GFX_W) + trim_right;
-                let line = &WALLS[m.get(row, col)][left_bound .. right_bound];
-
-                buf.push_str(line);
-
-                trim_left = 0;
-                trim_right = 9;
-            }
-        }
-    }
-    return buf; 
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>>{
@@ -502,8 +435,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 }
 
 // TODO:
-// b) wrap rendering level into somekind of Window
-// c) Window should have method to add somekind of image/text on in
 // d) add window with level
 // e) add window with stats
 // f) add method to add images to the level window
