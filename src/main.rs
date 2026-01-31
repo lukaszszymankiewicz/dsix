@@ -61,14 +61,18 @@ static WALLS: [&str; 16] = [
     "###...######...######...###...........................###...######...######...###",
 ];
 
+#[derive(Clone)]
 struct TerminalImage {
     data: String,
     pos_x: isize,
     pos_y: isize,
     rows: usize,
     cols: usize,
+    end_x: usize,
+    end_y: usize,
 }
 
+#[derive(Clone)]
 struct TerminalWindow {
     imgs: Vec<TerminalImage>,
     rows: usize,
@@ -94,6 +98,22 @@ struct Matrix {
 struct AMatrix {
     matrix: Matrix,
     rng: rand::rngs::ThreadRng,
+}
+
+impl TerminalImage {
+    
+    // TODO: some kind of RawImage should be used!
+    fn new(data: String, rows: usize, cols: usize, pos_x: isize, pos_y: isize) -> TerminalImage {
+        return TerminalImage{
+            data: data,
+            rows: rows,
+            cols: cols,
+            pos_x: pos_x,
+            pos_y: pos_y,
+            end_x: (pos_x + cols as isize) as usize,
+            end_y: (pos_y + rows as isize) as usize,
+        }
+    }
 }
 
 impl TerminalWindow {
@@ -130,70 +150,65 @@ impl TerminalScreen {
     fn add_window(&mut self, window: TerminalWindow) {
         self.winds.push(window);
     }
+    
+    fn render_line(&mut self, x: usize, y: usize, line: &str) {
+        self.screen.execute(cursor::MoveTo(x as u16, y as u16)).unwrap();
+        self.screen.execute(style::Print(line)).unwrap();
+    }
 
-    fn render_all_windows(&mut self) {
-        for wind in &self.winds {
-            
-            self.screen.execute(cursor::MoveTo((wind.pos_x - 1) as u16, (wind.pos_y - 1) as u16)).unwrap();
-            // border
-            // TODO: add border to somekind of image
-            // TODO: maybe each window should have an integer indicating border style?
-            stdout().execute(style::Print("X-------------X")).unwrap();
+    fn render_window(&mut self, wind: &TerminalWindow) {
 
-            for y in 0..wind.cols {
+        for y in 0..wind.cols {
+            self.render_line(wind.pos_x - 1, wind.pos_y + y, "@_____________@");
+        }
 
-                self.screen.execute(cursor::MoveTo( (wind.pos_x - 1) as u16, (wind.pos_y + y) as u16)).unwrap();
-                stdout().execute(style::Print("|")).unwrap();
-                self.screen.execute(cursor::MoveTo( (wind.pos_x + wind.rows) as u16, (wind.pos_y + y) as u16)).unwrap();
-                stdout().execute(style::Print("|")).unwrap();
-            }
+        self.render_line(wind.pos_x - 1, wind.pos_y - 1, "X@@@@@@@@@@@@@X");
+        self.render_line(wind.pos_x - 1, wind.pos_y + wind.cols, "X@@@@@@@@@@@@@X");
+
+        for img in &wind.imgs {
 
             let mut trim_left: isize = 0;
             let mut trim_up: isize = 0;
+            let mut trim_right: usize = 0;
+            let mut trim_down: usize = 0;
 
-            for img in &wind.imgs {
-
-                let mut trim_right: usize = img.cols;
-                let mut trim_down: usize = img.rows;
-
-                if img.pos_x < 0 {
-                    trim_left = img.pos_x * -1;
-                } 
-                
-                if img.pos_y < 0 {
-                    trim_up = img.pos_y * -1;
-                }
-
-                if img.pos_x as usize + img.cols > wind.cols {
-                    trim_right = (img.pos_x as usize + img.cols as usize) - wind.cols as usize;
-                }
-
-                if img.pos_y as usize + img.rows > wind.rows {
-                    trim_down = (img.pos_y as usize + img.rows as usize) - wind.rows as usize - 1;
-                }
-
-                self.screen.execute(cursor::MoveTo(
-                    (wind.pos_x as isize + img.pos_x + trim_left) as u16,
-                    (wind.pos_y as isize + img.pos_y + trim_up) as u16)
-                ).unwrap();
-
-                for line in 0..(img.rows - trim_down) {
-                    stdout().execute(style::Print(
-                            &img.data[
-                            line*img.rows
-                            ..
-                            line*img.rows + img.cols - trim_right
-                        ])).unwrap();
-                    stdout().execute(cursor::MoveTo(
-                            (wind.pos_x as isize + img.pos_x + trim_left) as u16,
-                            (wind.pos_y as isize + img.pos_y + trim_up + line as isize) as u16)
-                    ).unwrap();
-                }
-            }
+            if img.pos_x < 0 {
+                trim_left = img.pos_x * -1;
+            } 
             
-            // border
-            self.screen.execute(cursor::MoveTo( (wind.pos_x - 1) as u16, (wind.pos_y as isize + wind.cols as isize) as u16)).unwrap();
-            stdout().execute(style::Print("X-------------X")).unwrap();
+            if img.pos_y < 0 {
+                trim_up = img.pos_y * -1;
+            }
+            // -7 + 9 = 2
+            if img.pos_x + img.cols as isize >= wind.cols as isize {
+                trim_right = (img.pos_x as isize + img.cols as isize - wind.cols as isize) as usize;
+                assert!((img.pos_x as isize + img.cols as isize - wind.cols as isize)>=0, "img fail");
+            }
+
+            if img.pos_y + img.rows as isize >= wind.rows as isize {
+                trim_down = (img.pos_y as isize + img.rows as isize - wind.rows as isize) as usize;
+                assert!((img.pos_y as isize + img.rows as isize - wind.rows as isize + 1)>=0, "img fail");
+            }
+
+            for line in trim_up as usize..(img.rows - trim_down) {
+                let left = line*img.rows + trim_left as usize;
+                let right = line*img.rows + img.cols - trim_right;
+                let img_line = &img.data[left .. right];
+
+                self.render_line(
+                    (wind.pos_x as isize + img.pos_x + trim_left) as usize,
+                    (wind.pos_y as isize + img.pos_y + line as isize) as usize,
+                    img_line
+                );
+            }
+        }
+    }
+
+    fn render_all_windows(&mut self) {
+        let winds = self.winds.clone(); 
+
+        for wind in &winds {
+            self.render_window(wind);
         }
     }
 }
@@ -346,6 +361,7 @@ fn generate_map(hero_pos_x: usize, hero_pos_y: usize) -> AMatrix {
     return map;
 }
 
+// TODO: add maginc numer 9
 fn get_map_images(
     hero_pos_x: usize,
     hero_pos_y: usize,
@@ -356,28 +372,23 @@ fn get_map_images(
     let mut imgs: Vec<TerminalImage> = Vec::new();
 
     let camera_st_x: usize = hero_pos_x - win_w / 2;
-    let camera_st_y: usize = hero_pos_y - win_w / 2;
-    let camera_end_x: usize = hero_pos_x + win_h / 2;
+    let camera_end_x: usize = hero_pos_x + win_w / 2;
+    let camera_st_y: usize = hero_pos_y - win_h / 2;
     let camera_end_y: usize = hero_pos_y + win_h / 2;
 
-    let st_cell_left: usize = camera_st_x / win_w;
-    let end_cell_right: usize = camera_end_x / win_w;
-    let st_cell_up: usize = camera_st_y / win_h;
-    let end_cell_down: usize = camera_end_y / win_h;
+    let st_cell_left: usize = camera_st_x / 9;
+    let end_cell_right: usize = camera_end_x / 9;
+    let st_cell_up: usize = camera_st_y / 9;
+    let end_cell_down: usize = camera_end_y / 9;
     
     // get images and their pos
     for row in st_cell_up..end_cell_down+1 {
         for col in st_cell_left..end_cell_right+1 {
-            // TODO: use usize and calculate trimming
-            imgs.push(
-                TerminalImage{
-                    data: (&WALLS[m.get(row, col)]).to_string(),
-                    rows: 9,
-                    cols: 9,
-                    pos_x: ((col * ROOM_GFX_W) as isize) - camera_st_x as isize,
-                    pos_y: ((row * ROOM_GFX_H) as isize) - camera_st_y as isize
-                }
-            );
+
+            let x = ((col * 9) as isize) - camera_st_x as isize;
+            let y = ((row * 9) as isize) - camera_st_y as isize;
+
+            imgs.push(TerminalImage::new( (&WALLS[m.get(row, col)]).to_string(), 9, 9, x, y));
 
         }
     }
@@ -389,28 +400,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
     // GAME
     let x: usize = 4;
     let y: usize = 4;
-    let mut hero_pos_x: usize = x * ROOM_GFX_W + ROOM_GFX_W/2;
-    let mut hero_pos_y: usize = y * ROOM_GFX_H + ROOM_GFX_H/2;
-
+    let mut hero_pos_x: usize = x * 9 + ROOM_GFX_W/2;
+    let mut hero_pos_y: usize = y * 9 + ROOM_GFX_H/2;
     let map: AMatrix = generate_map(hero_pos_x, hero_pos_y);
+
+    execute!(stdout(), EnterAlternateScreen, Clear(ClearType::All))?;
 
     // UI layout
     let mut map_window: TerminalWindow = TerminalWindow::new(13, 13, 4, 4); 
     let mut screen = TerminalScreen::new(20, 20);
-
     screen.add_window(map_window);
 
-    let sample_img = TerminalImage{data: (&WALLS[3]).to_string(), rows: 9, cols: 9, pos_x: 8, pos_y: 7 };
-    screen.winds[0].push_image(sample_img);
+    let sample_img = TerminalImage::new((&WALLS[3]).to_string(), 9, 9, 8, 7);
+    let map_imgs = get_map_images(hero_pos_x, hero_pos_y, 13, 13, &map);
+    screen.winds[0].push_images(map_imgs);
 
     // GFX
     enable_raw_mode()?;
-    execute!(stdout(), EnterAlternateScreen, Clear(ClearType::All))?;
     stdout().execute(cursor::Hide).unwrap();
-
-    // This is the start window coords
-    let map_window_pos_x: u16 = 10;
-    let map_window_pos_y: u16 = 6;
 
     screen.render_all_windows();
 
