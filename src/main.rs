@@ -1,8 +1,9 @@
 use std::io;
 use crossterm::queue;
-use std::io::{Write, stdout};
+use std::io::{Write};
+
 use rand::Rng;
-use crossterm::{ExecutableCommand, cursor};
+use crossterm::{cursor};
 use crossterm::terminal::{ClearType, Clear, enable_raw_mode, disable_raw_mode};
 use crossterm::event::{read, Event, KeyEvent, KeyCode};
 use crossterm::execute;
@@ -29,10 +30,7 @@ impl Dir {
     }
 }
 
-static LEVEL_HEIGHT: usize = 9;
-static LEVEL_WIDTH: usize = 9;
-static EMPTY: usize = 0b00001111;
-static BLOCK_CHANCE: usize = 5;
+static CHANCE_FOR_ROOM_TO_HAVE_ANY_EXIT_BLOCKED: usize = 3;
 
 static BASE_ATTACK: usize = 2;
 static BASE_ARMOR: usize = 0;
@@ -41,10 +39,9 @@ static BASE_SPEED: usize = 2;
 
 static BASE_LEVEL_W: usize = 8;
 static BASE_LEVEL_H: usize = 8;
+static BASE_ROOM_SIZE: usize = 9;
 
-static BASE: usize = 9;
-
-static Graphics: [RawImage; 26] = [
+static GRAPHICS: [RawImage; 26] = [
     RawImage{gfx: "#################################################################################", rows: 9, cols: 9 },
     RawImage{gfx: "###...######...######...######...######...######...##############################", rows: 9, cols: 9 },
     RawImage{gfx: "##############################......###......###......###########################", rows: 9, cols: 9 },
@@ -92,7 +89,7 @@ struct TerminalImage {
 }
 
 trait RenderableContent {
-    fn render(&self, game: &GameVars, rows: usize, cols: usize) -> Vec<TerminalImage>;
+    fn render(&self, game: &mut GameVars, rows: usize, cols: usize) -> Vec<TerminalImage>;
 }
 
 struct TerminalWindow {
@@ -114,12 +111,9 @@ struct TerminalScreen {
 }
 
 struct GameVars {
-    map: AMatrix,
-    visit_map: VMatrix,
-    base: usize,
+    dungeon: Dungeon,
     hero_pos_x: usize,
     hero_pos_y: usize,
-    level: usize,
     attack: usize,
     armor: usize,
     speed: usize,
@@ -132,18 +126,11 @@ struct Game {
 }
 
 impl GameVars{
-    fn set_st_hero_pos(&mut self) {
-        self.map.unblock_all(self.hero_pos_y/self.base, self.hero_pos_x/self.base);
-    }
-
-    fn visit_room(&mut self) {
-        self.visit_map.set(self.hero_pos_y/self.base, self.hero_pos_x/self.base, 1);
-    }
 }
 
 impl TerminalImage {
     fn new(idx: usize, pos_x: isize, pos_y: isize) -> TerminalImage {
-        let raw = &Graphics[idx];
+        let raw = &GRAPHICS[idx];
         
         return TerminalImage{
             gfx: raw.gfx.to_string(),
@@ -236,7 +223,7 @@ impl TerminalScreen {
         }
     }
 
-    fn add_window<C: RenderableContent + 'static>(
+    fn add_new_window_to_layout<C: RenderableContent + 'static>(
         &mut self,
         content: C,
         rows: usize,
@@ -309,188 +296,190 @@ impl TerminalScreen {
 }
 
 
-struct Matrix {
+fn throw_k6_dice() -> usize {
+    return rand::rng().random_range(0..6);
+}
+
+struct Room {
+    visited: bool,
+    exits: [bool; 4],
+    img_idx: usize
+}
+
+impl Room {
+    fn new() -> Room {
+        let new_room: Room = Room{
+            visited: false,
+            exits: [true; 4],
+            img_idx: 25
+        };
+
+        return new_room;
+    }
+
+    fn update_the_associated_img_idx(&mut self) {
+        let mut idx: usize = 0b0000_0000;
+
+        for (index, bit) in self.exits.iter().enumerate().rev() {
+            idx += (*bit as usize) << index;
+        }
+
+        self.img_idx = idx;
+    }
+
+    fn visit(&mut self) {
+        if self.visited == true {
+            return;
+        }
+        self.visited = true; 
+        self.update_the_associated_img_idx();
+    }
+
+    // fn unvisit(&mut self) {
+    //     self.visited = false; 
+    // }
+
+    fn block_exit(&mut self, dir: Dir) {
+        self.exits[dir as usize] = false; 
+    }
+
+    fn unblock_exit(&mut self, dir: Dir) {
+        self.exits[dir as usize] = true; 
+    }
+
+}
+
+struct Dungeon {
+    level_number: usize,
     rows: usize,
     cols: usize,
-    data: Vec<usize>
+    rooms: Vec<Room>
 }
 
-struct AMatrix {
-    matrix: Matrix,
-    rng: rand::rngs::ThreadRng,
-}
+impl Dungeon {
+    fn new(level_number: usize) -> Dungeon {
+        let new_dungeon_cols = BASE_LEVEL_W + level_number;
+        let new_dungeon_rows = BASE_LEVEL_H + level_number;
+        let rooms_total = new_dungeon_cols * new_dungeon_rows;
+        let mut new_rooms :Vec<Room> = Vec::new();
 
-struct VMatrix {
-    matrix: Matrix,
-}
-
-impl Matrix {
-    fn new(rows: usize, cols: usize, fill: usize) -> Matrix {
-        return Matrix{
-            rows: rows,
-            cols: cols,
-            data: vec![fill; cols * rows],
-        };
-    }
-
-    fn get(&self, row: usize, col: usize) -> usize {
-        return self.data[self.rows * row + col];
-    }
-
-    fn set(&mut self, row: usize, col: usize, val: usize) { 
-        self.data[self.rows * row + col] = val;
-    }
-}
-
-impl VMatrix {
-    fn new(w: usize, h: usize, start_x: usize, start_y: usize) -> VMatrix {
-        let mut v: VMatrix = VMatrix{
-            matrix: Matrix::new(h, w, 0)
-        };
-
-        v.visit(start_x, start_y);
-
-        return v;
-    }
-
-    fn get(&self, row: usize, col: usize) -> usize {
-        return self.matrix.get(row, col);
-    }
-
-    fn set(&mut self, row: usize, col: usize, val: usize) { 
-        self.matrix.set(row, col, val);
-    }
-
-    fn visit(&mut self, row: usize, col: usize) { 
-        self.set(row, col, 1);
-    }
-
-    fn forget(&mut self, row: usize, col: usize) { 
-        self.set(row, col, 0);
-    }
-}
-
-impl AMatrix {
-    fn new(width: usize, height: usize) -> AMatrix {
-
-        let mut map = AMatrix{
-            matrix: Matrix::new(height, width, EMPTY),
-            rng: rand::rng(),
-        };
-        
-        // block vertical borders
-        for col in 0..width {
-            map.block_all(0, col);
-            map.block_all(height-1, col);
+        for _ in 0..rooms_total {
+            new_rooms.push(Room::new());
         }
 
-        // block horizontal borders
-        for row in 0..height {
-            map.block_all(row, 0);
-            map.block_all(row, width-1);
-        }
+        let new_dungeon = Dungeon {
+            level_number: level_number,
+            rows: new_dungeon_rows,
+            cols: new_dungeon_cols,
+            rooms: new_rooms
+        };
         
+        return new_dungeon;
+    }
+
+    fn init(&mut self, init_row: usize, init_col: usize) -> (usize, usize) {
+        // block vertical borders of whole level
+        for col in 0..self.cols {
+            self.block_all_exists_from_room(0, col);
+            self.block_all_exists_from_room(self.rows-1, col);
+        }
+
+        // block horizontal borders of whole level
+        for row in 0..self.rows {
+            self.block_all_exists_from_room(row, 0);
+            self.block_all_exists_from_room(row, self.rows-1);
+        }
+
         // generate random paths
-        for row in 0..height {
-            for col in 0..width {
-                map.block_random(row, col);
+        for row in 0..self.rows {
+            for col in 0..self.cols {
+                self.block_random_exit_of_room(row, col);
             }
         }
+        
+        self.unblock_all_exists_from_room(init_row, init_col);
+        self.set_room_as_visited(init_row, init_col);
 
-        return map;
+        // return the starting point of the hero, based on init room
+        return (
+            init_row * BASE_ROOM_SIZE + BASE_ROOM_SIZE/2,
+            init_col * BASE_ROOM_SIZE + BASE_ROOM_SIZE/2
+        );
     }
 
-    fn get(&self, row: usize, col: usize) -> usize {
-        return self.matrix.get(row, col);
+    fn get_room(&mut self, col: usize, row: usize) -> &mut Room {
+        return self.rooms.get_mut(self.rows * row + col).unwrap()
     }
 
-    fn set(&mut self, row: usize, col: usize, val: usize) { 
-        self.matrix.set(row, col, val);
-    }
-
-    fn modify_and(&mut self, row: usize, col: usize, val: usize) { 
-        let mut new = self.get(row, col);
-        new &= !(1 << val);
-        self.set(row, col, new);
-    }
-
-    fn modify_or(&mut self, row: usize, col: usize, val: usize) { 
-        let mut new = self.get(row, col);
-        new |= 1 << val;
-        self.set(row, col, new);
-    }
-
-    fn get_neighbor(&self, row: usize, col: usize, dir: Dir) -> Option<(usize, usize)> {
+    fn get_neighbor_room_coords(&self, row: usize, col: usize, dir: Dir) -> Option<(usize, usize)> {
         match dir {
             Dir::Left if col > 0 => Some((row, col - 1)),
-            Dir::Right if col < self.matrix.cols - 1 => Some((row, col + 1)),
+            Dir::Right if col < self.cols - 1 => Some((row, col + 1)),
             Dir::Up if row > 0 => Some((row - 1, col)),
-            Dir::Down if row < self.matrix.rows - 1 => Some((row + 1, col)),
+            Dir::Down if row < self.rows - 1 => Some((row + 1, col)),
             _ => None,
         }
     }
 
-    fn block(&mut self, row: usize, col: usize, dir: Dir) {
-        self.modify_and(row, col, dir as usize);
+    fn block_single_exit_from_room(&mut self, row: usize, col: usize, dir: Dir) {
+        self.get_room(row, col).block_exit(dir);
 
-        if let Some((n_row, n_col)) = self.get_neighbor(row, col, dir) {
-            self.modify_and(n_row, n_col, dir.opposite() as usize);
+        if let Some((neighboour_row, neighbour_col)) = self.get_neighbor_room_coords(row, col, dir) {
+            self.get_room(neighboour_row, neighbour_col).block_exit(dir.opposite());
         }
     }
 
-    fn unblock(&mut self, row: usize, col: usize, dir: Dir) {
-        self.modify_or(row, col, dir as usize);
-
-        if let Some((n_row, n_col)) = self.get_neighbor(row, col, dir) {
-            self.modify_or(n_row, n_col, dir.opposite() as usize);
-        }
-    }
-
-    fn block_all(&mut self, row: usize, col: usize) {
+    fn block_all_exists_from_room(&mut self, row: usize, col: usize) {
         for dir in [Dir::Left, Dir::Right, Dir::Up, Dir::Down] {
-            self.block(row, col, dir);
+            self.block_single_exit_from_room(row, col, dir);
+        }
+    }
+
+    fn unblock_single_exit_from_room(&mut self, row: usize, col: usize, dir: Dir) {
+        self.get_room(row, col).unblock_exit(dir);
+
+        if let Some((neighboour_row, neighbour_col)) = self.get_neighbor_room_coords(row, col, dir) {
+            self.get_room(neighboour_row, neighbour_col).unblock_exit(dir.opposite());
         }
     }
     
-    fn unblock_all(&mut self, row: usize, col: usize) {
+    fn unblock_all_exists_from_room(&mut self, row: usize, col: usize) {
         for dir in [Dir::Left, Dir::Right, Dir::Up, Dir::Down] {
-            self.unblock(row, col, dir);
+            self.unblock_single_exit_from_room(row, col, dir);
         }
     }
 
-    #[allow(dead_code)]
-    fn random_cell(&mut self) -> (usize, usize) {
-        return (
-            self.rng.random_range(1..self.matrix.rows-1),
-            self.rng.random_range(1..self.matrix.cols-1)
-        );
-    }
+    fn block_random_exit_of_room(&mut self, row: usize, col: usize) {
+        let exits = self.get_room(row, col).exits;
 
-    fn block_random(&mut self, row: usize, col: usize) {
-        let v = self.get(row, col);
+        // nothing more to block
+        if exits == [false; 4] {
+            return; 
+        } 
 
-        // Check if fully blocked (assuming 0 means all WALLS blocked)
-        // Adjust these masks based on your specific bit logic
-        if v & 0b1111 == 0 { return; } 
+        if throw_k6_dice() > CHANCE_FOR_ROOM_TO_HAVE_ANY_EXIT_BLOCKED {
+            return; 
+        }
 
-        if self.rng.random_range(0..10) < BLOCK_CHANCE {
-            let choice = self.rng.random_range(0..6);
-            match choice {
-                0 => self.block(row, col, Dir::Left),
-                1 => self.block(row, col, Dir::Right),
-                2 => self.block(row, col, Dir::Down),
-                3 => self.block(row, col, Dir::Up),
-                4 => {
-                    self.block(row, col, Dir::Up);
-                    self.block(row, col, Dir::Down);
-                },
-                5 => {
-                    self.block(row, col, Dir::Right);
-                    self.block(row, col, Dir::Left);
-                }
-                _ => unreachable!()
+        match throw_k6_dice() {
+            0 => self.block_single_exit_from_room(row, col, Dir::Left),
+            1 => self.block_single_exit_from_room(row, col, Dir::Right),
+            2 => self.block_single_exit_from_room(row, col, Dir::Down),
+            3 => self.block_single_exit_from_room(row, col, Dir::Up),
+            4 => {
+                self.block_single_exit_from_room(row, col, Dir::Up);
+                self.block_single_exit_from_room(row, col, Dir::Down);
+            },
+            5 => {
+                self.block_single_exit_from_room(row, col, Dir::Right);
+                self.block_single_exit_from_room(row, col, Dir::Left);
             }
+            _ => unreachable!()
         }
+    }
+
+    fn set_room_as_visited(&mut self, row: usize, col: usize) {
+        self.get_room(row, col).visit();
     }
 }
 
@@ -498,37 +487,32 @@ impl AMatrix {
 struct MapWindowContent;
 
 impl RenderableContent for MapWindowContent {
-    fn render(&self, game: &GameVars, rows: usize, cols: usize) -> Vec<TerminalImage> {
+    fn render(&self, vars: &mut GameVars, rows: usize, cols: usize) -> Vec<TerminalImage> {
         let win_h = rows;
         let win_w = cols;
         let mut imgs = Vec::new();
 
-        let camera_st_x = if game.hero_pos_x >= win_w / 2 { game.hero_pos_x - win_w / 2 } else { 0 };
-        let camera_end_x = game.hero_pos_x + win_w / 2;
-        let camera_st_y = if game.hero_pos_y >= win_h / 2 { game.hero_pos_y - win_h / 2 } else { 0 };
-        let camera_end_y = game.hero_pos_y + win_h / 2;
+        let camera_st_x = if vars.hero_pos_x >= win_w / 2 { vars.hero_pos_x - win_w / 2 } else { 0 };
+        let camera_end_x = vars.hero_pos_x + win_w / 2;
+        let camera_st_y = if vars.hero_pos_y >= win_h / 2 { vars.hero_pos_y - win_h / 2 } else { 0 };
+        let camera_end_y = vars.hero_pos_y + win_h / 2;
 
-        let st_cell_left = camera_st_x / game.base;
-        let end_cell_right = camera_end_x / game.base;
-        let st_cell_up = camera_st_y / game.base;
-        let end_cell_down = camera_end_y / game.base;
+        let st_cell_left = camera_st_x / BASE_ROOM_SIZE;
+        let end_cell_right = camera_end_x / BASE_ROOM_SIZE;
+        let st_cell_up = camera_st_y / BASE_ROOM_SIZE;
+        let end_cell_down = camera_end_y / BASE_ROOM_SIZE;
         
         // get wall images (0..16) and their pos
         for row in st_cell_up..end_cell_down+1 {
             for col in st_cell_left..end_cell_right+1 {
                 
-                let x_pad: isize = (game.hero_pos_x as isize) - (win_w / 2) as isize;
-                let y_pad: isize = (game.hero_pos_y as isize) - (win_h / 2) as isize;
+                let x_pad: isize = (vars.hero_pos_x as isize) - (win_w / 2) as isize;
+                let y_pad: isize = (vars.hero_pos_y as isize) - (win_h / 2) as isize;
 
-                let x = ((col * game.base) as isize) - x_pad;
-                let y = ((row * game.base) as isize) - y_pad;
+                let x = ((col * BASE_ROOM_SIZE) as isize) - x_pad;
+                let y = ((row * BASE_ROOM_SIZE) as isize) - y_pad;
 
-                let idx: usize = if game.visit_map.get(row, col) == 0 {
-                    25
-                } else {
-                    game.map.get(row, col)
-                };
-
+                let idx: usize = vars.dungeon.get_room(row, col).img_idx;
                 imgs.push(TerminalImage::new(idx, x, y));
             }
         }
@@ -545,7 +529,7 @@ impl RenderableContent for MapWindowContent {
 struct StatWindowContent;
 
 impl RenderableContent for StatWindowContent {
-    fn render(&self, game: &GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
+    fn render(&self, game: &mut GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
         let mut imgs = Vec::new();
 
         // Labels
@@ -557,7 +541,7 @@ impl RenderableContent for StatWindowContent {
         imgs.push(TerminalImage::new(22, 1, 6)); // EXP:
 
         // Values
-        imgs.push(TerminalImage::with_text(game.level.to_string(), 10, 1));
+        imgs.push(TerminalImage::with_text(game.dungeon.level_number.to_string(), 10, 1));
         imgs.push(TerminalImage::with_text(game.attack.to_string(), 10, 3));
         imgs.push(TerminalImage::with_text(game.armor.to_string(), 10, 4));
         imgs.push(TerminalImage::with_text(game.speed.to_string(), 10, 5));
@@ -569,7 +553,7 @@ impl RenderableContent for StatWindowContent {
 
 struct SkullWindowContent;
 impl RenderableContent for SkullWindowContent {
-    fn render(&self, _game: &GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
+    fn render(&self, _game: &mut GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
         let mut imgs = Vec::new();
         imgs.push(TerminalImage::new(23, 2, 0));
         imgs 
@@ -577,9 +561,8 @@ impl RenderableContent for SkullWindowContent {
 }
 
 struct BannerWindowContent;
-
 impl RenderableContent for BannerWindowContent {
-    fn render(&self, _game: &GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
+    fn render(&self, _game: &mut GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
         let mut imgs = Vec::new();
         imgs.push(TerminalImage::new(24, 32, 0));
         imgs 
@@ -588,41 +571,34 @@ impl RenderableContent for BannerWindowContent {
 
 struct LogWindowContent;
 impl RenderableContent for LogWindowContent {
-    fn render(&self, _game: &GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
-        Vec::new() // Empty for now
+    fn render(&self, _game: &mut GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
+        Vec::new()
     }
 }
 
-impl Game {
-    fn new(screen_w: usize, screen_h: usize, base: usize) -> Game {
-        let level: usize = 1;
-        let base: usize = base;
+impl Game{
+    fn new(screen_w: usize, screen_h: usize) -> Game {
         
-        let w = BASE_LEVEL_W + level;
-        let h = BASE_LEVEL_H + level;
-
-        let hero_pos_x: usize = w/2 * base + base/2;
-        let hero_pos_y: usize = h/2 * base + base/2;
-        
-        let map: AMatrix = AMatrix::new(w, h);
-        let visit_map: VMatrix = VMatrix::new(w, h, w/2, h/2);
+        let hero_init_pos_x: usize;
+        let hero_init_pos_y: usize;
 
         let mut game: Game =  Game {
             screen: TerminalScreen::new(screen_w, screen_h),
             vars: GameVars {
-                map: map,
-                visit_map: visit_map,
-                base: base,
-                hero_pos_x: hero_pos_x,
-                hero_pos_y: hero_pos_y,
-                level: level,
+                dungeon: Dungeon::new(1),
+                hero_pos_x: 0,
+                hero_pos_y: 0,
                 attack: BASE_ATTACK,
                 armor: BASE_ARMOR,
                 speed: BASE_SPEED,
                 exp: BASE_EXP
             }
         };
-        game.vars.set_st_hero_pos();
+
+        (hero_init_pos_x, hero_init_pos_y) = game.vars.dungeon.init(game.vars.dungeon.rows/2, game.vars.dungeon.cols/2);
+
+        game.vars.hero_pos_x = hero_init_pos_x;
+        game.vars.hero_pos_y = hero_init_pos_y;
 
         return game;
     }
@@ -647,35 +623,39 @@ impl Game {
             {
                 let wind = &mut self.screen.winds[w];
                 wind.clear();
-                let imgs = wind.content.render(&self.vars, wind.rows, wind.cols);
+                let imgs = wind.content.render(&mut self.vars, wind.rows, wind.cols);
                 wind.push_images(imgs);
             }
+
             self.screen.render_window(w);
         }
     }
 
     fn flush_screen(&mut self) {
-        self.screen.screen.flush();
+        let _ = self.screen.screen.flush();
     }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>>{
     // GAME
-    let mut game: Game = Game::new(20, 20, 9);     
-    game.prepare_pysical_terminal();
+    let mut game: Game = Game::new(20, 20);     
+    let _ = game.prepare_pysical_terminal();
 
     // UI layout
-    game.screen.add_window(SkullWindowContent, 13, 20, 2, 6, true, ' ');
-    game.screen.add_window(MapWindowContent, 13, 30, 24, 6, true, '.');
-    game.screen.add_window(StatWindowContent, 13, 15, 24+30+2, 6, true, ' ');
-    game.screen.add_window(BannerWindowContent, 1, 69, 2, 3, true, ' ');
-    game.screen.add_window(LogWindowContent, 3, 69, 2, 21, true, ' ');
-    
-    // update
-    game.render();
+    game.screen.add_new_window_to_layout(SkullWindowContent, 13, 20, 2, 6, true, ' ');
+    game.screen.add_new_window_to_layout(MapWindowContent, 13, 30, 24, 6, true, '.');
+    game.screen.add_new_window_to_layout(StatWindowContent, 13, 15, 24+30+2, 6, true, ' ');
+    game.screen.add_new_window_to_layout(BannerWindowContent, 1, 69, 2, 3, true, ' ');
+    game.screen.add_new_window_to_layout(LogWindowContent, 3, 69, 2, 21, true, '.');
     
     // game loop
     loop {
+
+        // update
+        game.render();
+        game.flush_screen();
+
+        // controls
         match read() {
             Ok(k) => match k {
                 // TODO: after each movemnet, check if entering new cell
@@ -687,19 +667,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
             },
             Err(_) => todo!(),
         };
-
-        game.vars.visit_room();
-        game.render();
-        game.flush_screen();
+        
+        // check the room
+        game.vars.dungeon.set_room_as_visited(
+            game.vars.hero_pos_y / BASE_ROOM_SIZE,
+            game.vars.hero_pos_x / BASE_ROOM_SIZE
+        );
     }
 
-    game.leave_pysical_terminal();
+    let _ = game.leave_pysical_terminal();
     Ok(())
 }
 
 
 // TODO:
-// h) add GameState
-// j) basic movement
-// j) add start and exit to the level
-// k) add new level after entering the exit!
+// add logs!
