@@ -1,5 +1,7 @@
 use std::io;
 use crossterm::queue;
+
+use std::collections::VecDeque;
 use std::io::{Write};
 
 use rand::Rng;
@@ -19,6 +21,7 @@ enum Dir {
     Left = 3,
 }
 
+
 impl Dir {
     fn opposite(&self) -> Dir {
         match self {
@@ -36,6 +39,7 @@ static BASE_ATTACK: usize = 2;
 static BASE_ARMOR: usize = 0;
 static BASE_EXP: usize = 0;
 static BASE_SPEED: usize = 2;
+static LOG_SIZE: usize = 3;
 
 static BASE_LEVEL_W: usize = 8;
 static BASE_LEVEL_H: usize = 8;
@@ -70,7 +74,6 @@ static GRAPHICS: [RawImage; 26] = [
     RawImage{gfx: "?????????????????????????????????????????????????????????????????????????????????", rows: 9, cols: 9 },
 ];
 
-
 struct RawImage {
     gfx: &'static str,
     rows: usize,
@@ -104,8 +107,6 @@ struct TerminalWindow {
 }
 
 struct TerminalScreen {
-    rows: usize,
-    cols: usize,
     winds: Vec<TerminalWindow>,
     screen: io::Stdout
 }
@@ -114,18 +115,18 @@ struct GameVars {
     dungeon: Dungeon,
     hero_pos_x: usize,
     hero_pos_y: usize,
+    hero_room_x: usize,
+    hero_room_y: usize,
     attack: usize,
     armor: usize,
     speed: usize,
     exp: usize,
+    logs: VecDeque<String>,
 }
 
 struct Game {
     screen: TerminalScreen,
-    vars: GameVars
-}
-
-impl GameVars{
+    vars: GameVars,
 }
 
 impl TerminalImage {
@@ -214,10 +215,8 @@ impl TerminalWindow {
 }
 
 impl TerminalScreen {
-    fn new(rows: usize, cols: usize) -> TerminalScreen {
+    fn new() -> TerminalScreen {
         return TerminalScreen{
-            rows: rows,
-            cols: cols,
             winds: Vec::new(),
             screen: io::stdout()
         }
@@ -327,12 +326,13 @@ impl Room {
         self.img_idx = idx;
     }
 
-    fn visit(&mut self) {
+    fn visit(&mut self) -> usize {
         if self.visited == true {
-            return;
+            return 0;
         }
         self.visited = true; 
         self.update_the_associated_img_idx();
+        return 1;
     }
 
     // fn unvisit(&mut self) {
@@ -478,8 +478,8 @@ impl Dungeon {
         }
     }
 
-    fn set_room_as_visited(&mut self, row: usize, col: usize) {
-        self.get_room(row, col).visit();
+    fn set_room_as_visited(&mut self, row: usize, col: usize) -> usize {
+        return self.get_room(row, col).visit();
     }
 }
 
@@ -571,27 +571,42 @@ impl RenderableContent for BannerWindowContent {
 
 struct LogWindowContent;
 impl RenderableContent for LogWindowContent {
-    fn render(&self, _game: &mut GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
-        Vec::new()
+    fn render(&self, vars: &mut GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
+        let log_size: isize = 2;
+        let mut i: isize = 0;
+        
+        let mut imgs = Vec::new();
+        for s in vars.logs.iter().rev() { 
+
+            if i > log_size { break; }
+
+            imgs.push(TerminalImage::with_text(s.to_string(), 0, log_size-i));
+            i+=1;
+        }
+
+        return imgs;
     }
 }
 
 impl Game{
-    fn new(screen_w: usize, screen_h: usize) -> Game {
+    fn new() -> Game {
         
         let hero_init_pos_x: usize;
         let hero_init_pos_y: usize;
 
         let mut game: Game =  Game {
-            screen: TerminalScreen::new(screen_w, screen_h),
+            screen: TerminalScreen::new(),
             vars: GameVars {
                 dungeon: Dungeon::new(1),
                 hero_pos_x: 0,
                 hero_pos_y: 0,
+                hero_room_x: 0,
+                hero_room_y: 0,
                 attack: BASE_ATTACK,
                 armor: BASE_ARMOR,
                 speed: BASE_SPEED,
-                exp: BASE_EXP
+                exp: BASE_EXP,
+                logs: VecDeque::new(),
             }
         };
 
@@ -599,6 +614,9 @@ impl Game{
 
         game.vars.hero_pos_x = hero_init_pos_x;
         game.vars.hero_pos_y = hero_init_pos_y;
+
+        game.vars.hero_room_x = hero_init_pos_x / BASE_ROOM_SIZE;
+        game.vars.hero_room_y = hero_init_pos_y / BASE_ROOM_SIZE;
 
         return game;
     }
@@ -634,11 +652,51 @@ impl Game{
     fn flush_screen(&mut self) {
         let _ = self.screen.screen.flush();
     }
+
 }
 
+impl GameVars {
+    fn move_hero_up(&mut self) -> usize {
+        self.hero_pos_y -= 1;
+        self.hero_room_y = self.hero_pos_y / BASE_ROOM_SIZE;
+        return 1;
+    }
+
+    fn move_hero_down(&mut self) -> usize {
+        self.hero_pos_y += 1;
+        self.hero_room_y = self.hero_pos_y / BASE_ROOM_SIZE;
+        return 1;
+    }
+
+    fn move_hero_right(&mut self) -> usize {
+        self.hero_pos_x += 1;
+        self.hero_room_x = self.hero_pos_x / BASE_ROOM_SIZE;
+        return 1;
+    }
+
+    fn move_hero_left(&mut self) -> usize {
+        self.hero_pos_x -= 1;
+        self.hero_room_x = self.hero_pos_x / BASE_ROOM_SIZE;
+        return 1;
+    }
+    
+    fn visit_room_in_current_hero_pos(&mut self) -> usize {
+        let res: usize = self.dungeon.set_room_as_visited(self.hero_room_y, self.hero_room_x);
+        return res;
+    }
+
+    fn add_log(&mut self, log: String) {
+        self.logs.push_back(log);
+
+        if self.logs.len() > LOG_SIZE {
+            self.logs.pop_front(); 
+        }
+    }
+
+}
 fn main() -> Result<(), Box<dyn std::error::Error>>{
     // GAME
-    let mut game: Game = Game::new(20, 20);     
+    let mut game: Game = Game::new();     
     let _ = game.prepare_pysical_terminal();
 
     // UI layout
@@ -659,26 +717,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
         match read() {
             Ok(k) => match k {
                 // TODO: after each movemnet, check if entering new cell
-                Event::Key(KeyEvent{code: KeyCode::Up, ..}) => game.vars.hero_pos_y -= 1,
-                Event::Key(KeyEvent{code: KeyCode::Down, ..}) => game.vars.hero_pos_y += 1,
-                Event::Key(KeyEvent{code: KeyCode::Right, ..}) => game.vars.hero_pos_x += 1,
-                Event::Key(KeyEvent{code: KeyCode::Left, ..}) => game.vars.hero_pos_x -= 1,
+                Event::Key(KeyEvent{code: KeyCode::Up, ..}) => {
+                    let _ = game.vars.move_hero_up();
+                    game.vars.add_log("You have moved up...".to_string());
+                }
+                Event::Key(KeyEvent{code: KeyCode::Down, ..}) => {
+                    let _ = game.vars.move_hero_down();
+                    game.vars.add_log("You have moved down...".to_string());
+                }
+                Event::Key(KeyEvent{code: KeyCode::Right, ..}) => {
+                    let _ = game.vars.move_hero_right();
+                    game.vars.add_log("You have moved right...".to_string());
+                }
+                Event::Key(KeyEvent{code: KeyCode::Left, ..}) => {
+                    let _ = game.vars.move_hero_left();
+                    game.vars.add_log("You have moved left...".to_string());
+                }
                 _ => break
             },
             Err(_) => todo!(),
         };
         
         // check the room
-        game.vars.dungeon.set_room_as_visited(
-            game.vars.hero_pos_y / BASE_ROOM_SIZE,
-            game.vars.hero_pos_x / BASE_ROOM_SIZE
-        );
+        let res = game.vars.visit_room_in_current_hero_pos();
+
+        if res == 1 {
+            game.vars.add_log("You have entered new room!".to_string());
+        }
     }
 
     let _ = game.leave_pysical_terminal();
+
     Ok(())
 }
-
-
-// TODO:
-// add logs!
