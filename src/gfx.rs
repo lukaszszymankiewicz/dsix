@@ -2,41 +2,44 @@ use crate::GameVars;
 use std::io;
 use crossterm::{queue, cursor, style};
 
-static GRAPHICS: [RawImage; 26] = [
-    RawImage{gfx: "#################################################################################", rows: 9, cols: 9 },
-    RawImage{gfx: "###...######...######...######...######...######...##############################", rows: 9, cols: 9 },
-    RawImage{gfx: "##############################......###......###......###########################", rows: 9, cols: 9 },
-    RawImage{gfx: "###...######...######...######......###......###......###########################", rows: 9, cols: 9 },
-    RawImage{gfx: "##############################...######...######...######...######...######...###", rows: 9, cols: 9 },
-    RawImage{gfx: "###...######...######...######...######...######...######...######...######...###", rows: 9, cols: 9 },
-    RawImage{gfx: "##############################......###......###......###...######...######...###", rows: 9, cols: 9 },
-    RawImage{gfx: "###...######...######...######......###......###......###...######...######...###", rows: 9, cols: 9 },
-    RawImage{gfx: "###########################......###......###......##############################", rows: 9, cols: 9 },
-    RawImage{gfx: "###...######...######...###......###......###......##############################", rows: 9, cols: 9 },
-    RawImage{gfx: "###########################...........................###########################", rows: 9, cols: 9 },
-    RawImage{gfx: "###...######...######...###...........................###########################", rows: 9, cols: 9 },
-    RawImage{gfx: "###########################......###......###......######...######...######...###", rows: 9, cols: 9 },
-    RawImage{gfx: "###...######...######...###......###......###......######...######...######...###", rows: 9, cols: 9 },
-    RawImage{gfx: "###########################...........................###...######...######...###", rows: 9, cols: 9 },
-    RawImage{gfx: "###...######...######...###...........................###...######...######...###", rows: 9, cols: 9 },
-    RawImage{gfx: "@", rows: 1, cols: 1 },
-    RawImage{gfx: "LEVEL: ", rows: 1, cols: 7 },
-    RawImage{gfx: "------------", rows: 1, cols: 11 },
-    RawImage{gfx: "ATTACK: ", rows: 1, cols: 8 },
-    RawImage{gfx: "ARMOR: ", rows: 1, cols: 7 },
-    RawImage{gfx: "SPEED: ", rows: 1, cols: 7 },
-    RawImage{gfx: "EXP: ", rows: 1, cols: 5 },
-    RawImage{gfx: r"     ______        -'      '-    /            \ |              ||,   -    -   ,|| )(__/  \__)( ||/     /\     \|(_     ^^     _) \__|IIIIII|__/   |-\IIIIII/-|    \          /     `--------`                   ", rows: 13, cols: 16 },
-    RawImage{gfx: r"EXPLORATION", rows: 1, cols: 11 },
-    RawImage{gfx: "?????????????????????????????????????????????????????????????????????????????????", rows: 9, cols: 9 },
+
+static GRAPHICS: [RawImage; 27] = [
+    RawImage{desc:"X",debug:"",gfx:"#################################################################################",rows:9,cols:9},
+    RawImage{desc:"dead end",debug:"v",gfx:"###...######...######...######...######...######...##############################",rows:9,cols:9},
+    RawImage{desc:"dead end",debug:"<",gfx:"##############################......###......###......###########################",rows:9,cols:9},
+    RawImage{desc:"corridor",debug:"└",gfx:"###...######...######...######......###......###......###########################",rows:9,cols:9},
+    RawImage{desc:"dead end",debug:"^",gfx:"##############################...######...######...######...######...######...###",rows:9,cols:9},
+    RawImage{desc:"corridor",debug:"|",gfx:"###...######...######...######...######...######...######...######...######...###",rows:9,cols:9},
+    RawImage{desc:"corridor",debug:"┌",gfx:"##############################......###......###......###...######...######...###",rows:9,cols:9},
+    RawImage{desc:"intersection",debug:"├",gfx:"###...######...######...######......###......###......###...######...######...###",rows:9,cols:9},
+    RawImage{desc:"dead end",debug:">",gfx:"###########################......###......###......##############################",rows:9,cols:9},
+    RawImage{desc:"corridor",debug:"┘",gfx:"###...######...######...###......###......###......##############################",rows:9,cols:9},
+    RawImage{desc:"corridor",debug:"-",gfx:"###########################...........................###########################",rows:9,cols:9},
+    RawImage{desc:"intersection",debug:"┴",gfx:"###...######...######...###...........................###########################",rows:9,cols:9},
+    RawImage{desc:"corridor",debug:"┐",gfx:"###########################......###......###......######...######...######...###",rows:9,cols:9},
+    RawImage{desc:"intersection",debug:"┤",gfx:"###...######...######...###......###......###......######...######...######...###",rows:9,cols:9},
+    RawImage{desc:"intersection",debug:"┬",gfx:"###########################...........................###...######...######...###",rows:9,cols:9},
+    RawImage{desc:"intersection",debug:"┼",gfx:"###...######...######...###...........................###...######...######...###",rows:9,cols:9},
+    RawImage{desc: "", debug: "", gfx: "@", rows: 1, cols: 1 },
+    RawImage{desc: "", debug: "", gfx: "LEVEL: ", rows: 1, cols: 7 },
+    RawImage{desc: "", debug: "", gfx: "------------", rows: 1, cols: 11 },
+    RawImage{desc: "", debug: "", gfx: "ATTACK: ", rows: 1, cols: 8 },
+    RawImage{desc: "", debug: "", gfx: "ARMOR: ", rows: 1, cols: 7 },
+    RawImage{desc: "", debug: "", gfx: "SPEED: ", rows: 1, cols: 7 },
+    RawImage{desc: "", debug: "", gfx: "EXP: ", rows: 1, cols: 5 },
+    RawImage{desc: "", debug: "", gfx: r"     ______        -'      '-    /            \ |              ||,   -    -   ,|| )(__/  \__)( ||/     /\     \|(_     ^^     _) \__|IIIIII|__/   |-\IIIIII/-|    \          /     `--------`                   ", rows: 13, cols: 16 },
+    RawImage{desc: "", debug: "", gfx: r"EXPLORATION", rows: 1, cols: 11 },
+    RawImage{desc: "", debug: "", gfx: "$", rows: 1, cols: 1 },
+    RawImage{desc: "", debug: "", gfx: "?????????????????????????????????????????????????????????????????????????????????", rows: 9, cols: 9 },
 ];
 
 struct RawImage {
     gfx: &'static str,
+    desc: &'static str,
+    debug: &'static str,
     rows: usize,
     cols: usize,
 }
-
 #[derive(Clone)]
 pub struct TerminalImage {
     gfx: String,
@@ -92,6 +95,20 @@ impl TerminalImage {
             pos_x,
             pos_y,
             end_x: pos_x + len as isize,
+            end_y: pos_y + 1,
+        }
+    }
+
+    pub fn with_debug_text(idx: usize, pos_x: isize, pos_y: isize) -> TerminalImage {
+        let raw = &GRAPHICS[idx];
+
+        TerminalImage {
+            gfx: raw.debug.to_string(),
+            rows: 1,
+            cols: 1,
+            pos_x,
+            pos_y,
+            end_x: pos_x + 1,
             end_y: pos_y + 1,
         }
     }
@@ -193,12 +210,20 @@ impl TerminalScreen {
                 // assert!(trim_down <= img.rows);
             }
 
+            if trim_down >= img.rows {
+                continue
+            }
+
             for line in trim_up as usize..(img.rows - trim_down) {
                 let left = line*img.cols + trim_left as usize;
                 let right = line*img.cols + img.cols - trim_right;
                 
                 if left < right && right <= img.gfx.len() {
-                    let img_line = &img.gfx[left .. right];
+                    let img_line;
+                    
+                    // TODO: make debug and normal render using the same line here
+                    // img_line = &img.gfx;
+                    img_line = &img.gfx[left .. right];
 
                     queue!(self.screen, cursor::MoveTo(
                             (wind.pos_x as isize + img.pos_x + trim_left) as u16,

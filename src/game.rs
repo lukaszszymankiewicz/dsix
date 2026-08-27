@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 use std::io::{Write};
+use rand::seq::IndexedRandom;
 
 use rand::Rng;
 use crossterm::{cursor};
@@ -8,6 +9,7 @@ use crossterm::execute;
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 
 use crate::gfx::{TerminalScreen, TerminalImage, RenderableContent};
+
 
 #[derive(Copy, Clone)]
 pub enum Dir {
@@ -61,7 +63,8 @@ pub struct GameVars {
 struct Room {
     visited: bool,
     exits: [bool; 4],
-    img_idx: usize
+    img_idx: usize,
+    can_go_down: bool,
 }
 
 fn throw_k6_dice() -> usize {
@@ -73,7 +76,8 @@ impl Room {
         let new_room: Room = Room{
             visited: false,
             exits: [true; 4],
-            img_idx: 25
+            img_idx: 26,
+            can_go_down: false,
         };
 
         return new_room;
@@ -119,13 +123,91 @@ struct Dungeon {
     rooms: Vec<Room>
 }
 
+struct Path {
+    steps: Vec<(usize, usize)>,
+    max_len: usize,
+    possible_next_steps: Vec<Dir>
+}
+
+impl Path {
+    fn new(initial_x: usize, initial_y: usize) -> Path {
+        let new_path = Path {
+            steps: vec![(initial_x, initial_y)],
+            max_len: 6,
+            possible_next_steps: Vec::new()
+        };
+        return new_path;
+    }
+
+    fn last_step (&mut self) -> Option<(usize, usize)> {
+        match self.steps.len() {
+            0 => None,
+            n => Some(self.steps[n-1])
+        }
+    }
+
+    fn add_step_to_fixed_direction(&mut self, direction: Dir) {
+        let last_step: (usize, usize) = self.last_step().unwrap();
+
+        match direction {
+            Dir::Left => {
+                self.steps.push((last_step.0, last_step.1-1));
+            }
+            Dir::Right => {
+                self.steps.push((last_step.0, last_step.1+1));
+            }
+            Dir::Up => {
+                self.steps.push((last_step.0-1, last_step.1));
+            }
+            Dir::Down => {
+                self.steps.push((last_step.0+1, last_step.1));
+            }
+        }
+        
+        self.possible_next_steps.clear();
+    }
+
+    fn check_possible_next_steps(&mut self, exits: [bool; 4]) {
+        self.possible_next_steps.clear();
+
+        let last_step = self.last_step();
+        let last_step_x: usize = last_step.unwrap().0;
+        let last_step_y: usize = last_step.unwrap().1;
+        
+        //urdl 
+
+        if exits[3] == true & !self.steps.contains(&(last_step_x, last_step_y-1)) {
+            self.possible_next_steps.push(Dir::Left);
+        }
+
+        if exits[1] == true & !self.steps.contains(&(last_step_x, last_step_y+1)) {
+            self.possible_next_steps.push(Dir::Right);
+        }
+
+        if exits[0] == true & !self.steps.contains(&(last_step_x-1, last_step_y)) {
+            self.possible_next_steps.push(Dir::Up);
+        }
+        
+        if exits[2] == true & !self.steps.contains(&(last_step_x+1, last_step_y)) {
+            self.possible_next_steps.push(Dir::Down);
+        }
+
+    }
+
+    fn choose_random_possible_step(&mut self) -> Dir  {
+        return *self.possible_next_steps.choose(&mut rand::rng()).unwrap();
+    }
+
+}
+
 impl Dungeon {
     fn new(level_number: usize) -> Dungeon {
         let new_dungeon_cols = BASE_LEVEL_W + level_number;
         let new_dungeon_rows = BASE_LEVEL_H + level_number;
         let rooms_total = new_dungeon_cols * new_dungeon_rows;
-        let mut new_rooms :Vec<Room> = Vec::new();
-
+        let mut new_rooms: Vec<Room> = Vec::new();
+        
+        // Dungeon coords start from upper-left corner
         for _ in 0..rooms_total {
             new_rooms.push(Room::new());
         }
@@ -136,18 +218,19 @@ impl Dungeon {
             cols: new_dungeon_cols,
             rooms: new_rooms
         };
-        
+
+
         return new_dungeon;
     }
 
     fn init(&mut self, init_row: usize, init_col: usize) -> (usize, usize) {
-        // block vertical borders of whole level
+        // block horizontal borders of whole level
         for col in 0..self.cols {
             self.block_all_exists_from_room(0, col);
             self.block_all_exists_from_room(self.rows-1, col);
         }
 
-        // block horizontal borders of whole level
+        // block vertical borders of whole level
         for row in 0..self.rows {
             self.block_all_exists_from_room(row, 0);
             self.block_all_exists_from_room(row, self.rows-1);
@@ -162,6 +245,7 @@ impl Dungeon {
         
         self.unblock_all_exists_from_room(init_row, init_col);
         self.set_room_as_visited(init_row, init_col);
+        self.generate_exit_coord(init_row, init_col);
 
         // return the starting point of the hero, based on init room
         return (
@@ -170,7 +254,41 @@ impl Dungeon {
         );
     }
 
-    fn get_room(&mut self, col: usize, row: usize) -> &mut Room {
+    fn generate_exit_coord(&mut self, initial_x: usize, initial_y: usize) {
+        let mut new_path: Path = Path::new(initial_x, initial_y);
+
+        // initally - all direction are possible, so any way can be chosen
+        new_path.add_step_to_fixed_direction(Dir::Up);
+
+        let mut last_step_x: usize = 0;
+        let mut last_step_y: usize = 0;
+
+        loop {
+
+            let mut last_step = new_path.last_step();
+            last_step_x = last_step.unwrap().0;
+            last_step_y = last_step.unwrap().1;
+
+            let possible_exits = self.get_room(last_step_x, last_step_y).exits;
+            new_path.check_possible_next_steps(possible_exits);
+
+            if new_path.possible_next_steps.len() == 0 || new_path.steps.len() >= new_path.max_len {
+                break; 
+            }
+
+            let new_dir: Dir = new_path.choose_random_possible_step();
+            new_path.add_step_to_fixed_direction(new_dir);
+        }
+
+        let mut exit_coord = new_path.last_step();
+        let mut exit_coord_x = exit_coord.unwrap().0;
+        let mut exit_coord_y = exit_coord.unwrap().1;
+
+        self.get_room(last_step_x, last_step_y).can_go_down = true;
+    }
+
+    fn get_room(&mut self, row: usize, col: usize) -> &mut Room {
+        // rooms coords start from uppper-left corner of the Dungeon
         return self.rooms.get_mut(self.rows * row + col).unwrap()
     }
 
@@ -185,6 +303,8 @@ impl Dungeon {
     }
 
     fn block_single_exit_from_room(&mut self, row: usize, col: usize, dir: Dir) {
+
+        // self.block_all_exists_from_room(row, 0);
         self.get_room(row, col).block_exit(dir);
 
         if let Some((neighboour_row, neighbour_col)) = self.get_neighbor_room_coords(row, col, dir) {
@@ -198,6 +318,12 @@ impl Dungeon {
         }
     }
 
+    fn unblock_all_exists_from_room(&mut self, row: usize, col: usize) {
+        for dir in [Dir::Left, Dir::Right, Dir::Up, Dir::Down] {
+            self.unblock_single_exit_from_room(row, col, dir);
+        }
+    }
+
     fn unblock_single_exit_from_room(&mut self, row: usize, col: usize, dir: Dir) {
         self.get_room(row, col).unblock_exit(dir);
 
@@ -206,11 +332,6 @@ impl Dungeon {
         }
     }
     
-    fn unblock_all_exists_from_room(&mut self, row: usize, col: usize) {
-        for dir in [Dir::Left, Dir::Right, Dir::Up, Dir::Down] {
-            self.unblock_single_exit_from_room(row, col, dir);
-        }
-    }
 
     fn block_random_exit_of_room(&mut self, row: usize, col: usize) {
         let exits = self.get_room(row, col).exits;
@@ -244,9 +365,19 @@ impl Dungeon {
     fn set_room_as_visited(&mut self, row: usize, col: usize) -> usize {
         return self.get_room(row, col).visit();
     }
+    
+    // needed only for debug
+    fn set_all_rooms_as_visited(&mut self) {
+        for row in 0..self.rows {
+            for col in 0..self.cols {
+                let _ = self.get_room(row, col).visit();
+            }
+        }
+    }
+
 }
 
-
+// TODO: this maybe to some ui?
 pub struct MapWindowContent;
 impl RenderableContent for MapWindowContent {
     fn render(&self, vars: &mut GameVars, rows: usize, cols: usize) -> Vec<TerminalImage> {
@@ -276,13 +407,49 @@ impl RenderableContent for MapWindowContent {
 
                 let idx: usize = vars.dungeon.get_room(row, col).img_idx;
                 imgs.push(TerminalImage::new(idx, x, y));
+
+                // EXIT
+                if vars.dungeon.get_room(row, col).can_go_down == true {
+
+                    let exit_x = ((col * BASE_ROOM_SIZE) as isize) - x_pad + 4;
+                    let exit_y = ((row * BASE_ROOM_SIZE) as isize) - y_pad + 4;
+
+                    imgs.push(TerminalImage::new(25, exit_x, exit_y));
+                };
             }
         }
 
         // Hero
-        let pos_x = cols as isize / 2;
-        let pos_y = rows as isize / 2;
+        let pos_x = win_w as isize / 2;
+        let pos_y = win_h as isize / 2;
         imgs.push(TerminalImage::new(16, pos_x, pos_y));
+        
+
+        imgs 
+    }
+}
+
+pub struct DebugMapWindowContent;
+impl RenderableContent for DebugMapWindowContent {
+    fn render(&self, vars: &mut GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
+        
+        let mut imgs = Vec::new();
+
+        for row in 0..vars.dungeon.rows {
+            for col in 0..vars.dungeon.cols {
+
+                let idx: usize = vars.dungeon.get_room(row, col).img_idx;
+
+                imgs.push(TerminalImage::with_debug_text(idx, col.try_into().unwrap(), row.try_into().unwrap()));
+            }
+        }
+
+        // Hero
+        imgs.push(TerminalImage::new(
+            16,
+            (vars.dungeon.cols/2).try_into().unwrap(),
+            (vars.dungeon.rows/2).try_into().unwrap())
+        );
 
         imgs 
     }
@@ -335,8 +502,28 @@ impl RenderableContent for LogWindowContent {
     fn render(&self, vars: &mut GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
         let log_size: isize = 2;
         let mut i: isize = 0;
-        
         let mut imgs = Vec::new();
+        
+
+        // inital logs
+        if vars.logs.len() == 0 {
+
+            for row in 0..vars.dungeon.rows {
+                for col in 0..vars.dungeon.cols {
+                        
+                    let mut exit_coord_string: String = String::new();
+                    exit_coord_string.push_str(&row.to_string());
+                    exit_coord_string.push(',');
+                    exit_coord_string.push_str(&col.to_string());
+
+                    if vars.dungeon.get_room(row, col).can_go_down == true {
+                        imgs.push(TerminalImage::with_text(exit_coord_string, 0, 0));
+                    }
+                }
+            }
+        }
+
+
         for s in vars.logs.iter().rev() { 
 
             if i > log_size { break; }
@@ -444,6 +631,10 @@ impl GameVars {
     pub fn visit_room_in_current_hero_pos(&mut self) -> usize {
         let res: usize = self.dungeon.set_room_as_visited(self.hero_room_y, self.hero_room_x);
         return res;
+    }
+
+    pub fn visit_all_rooms(&mut self) {
+        self.dungeon.set_all_rooms_as_visited();
     }
 
     pub fn add_log(&mut self, log: String) {
