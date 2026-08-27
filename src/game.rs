@@ -260,12 +260,12 @@ impl Dungeon {
         // initally - all direction are possible, so any way can be chosen
         new_path.add_step_to_fixed_direction(Dir::Up);
 
-        let mut last_step_x: usize = 0;
-        let mut last_step_y: usize = 0;
+        let mut last_step_x: usize;
+        let mut last_step_y: usize;
 
         loop {
 
-            let mut last_step = new_path.last_step();
+            let last_step = new_path.last_step();
             last_step_x = last_step.unwrap().0;
             last_step_y = last_step.unwrap().1;
 
@@ -280,11 +280,11 @@ impl Dungeon {
             new_path.add_step_to_fixed_direction(new_dir);
         }
 
-        let mut exit_coord = new_path.last_step();
-        let mut exit_coord_x = exit_coord.unwrap().0;
-        let mut exit_coord_y = exit_coord.unwrap().1;
+        let exit_coord = new_path.last_step();
+        let exit_coord_x = exit_coord.unwrap().0;
+        let exit_coord_y = exit_coord.unwrap().1;
 
-        self.get_room(last_step_x, last_step_y).can_go_down = true;
+        self.get_room(exit_coord_x, exit_coord_y).can_go_down = true;
     }
 
     fn get_room(&mut self, row: usize, col: usize) -> &mut Room {

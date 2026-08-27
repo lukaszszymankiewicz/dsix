@@ -35,11 +35,13 @@ static GRAPHICS: [RawImage; 27] = [
 
 struct RawImage {
     gfx: &'static str,
+    #[allow(unused)]
     desc: &'static str,
     debug: &'static str,
     rows: usize,
     cols: usize,
 }
+
 #[derive(Clone)]
 pub struct TerminalImage {
     gfx: String,
