@@ -19,6 +19,10 @@ pub enum Dir {
     Left = 3,
 }
 
+pub enum EntityType {
+    StairsToLowerLevel = 0,
+}
+
 impl Dir {
     fn opposite(&self) -> Dir {
         match self {
@@ -60,11 +64,17 @@ pub struct GameVars {
     logs: VecDeque<String>,
 }
 
+struct Entity {
+    entity_type: EntityType,
+    entity_pos_x: usize,
+    entity_pos_y: usize
+}
+
 struct Room {
     visited: bool,
     exits: [bool; 4],
     img_idx: usize,
-    can_go_down: bool,
+    entities: Vec<Entity>
 }
 
 fn throw_k6_dice() -> usize {
@@ -77,7 +87,7 @@ impl Room {
             visited: false,
             exits: [true; 4],
             img_idx: 26,
-            can_go_down: false,
+            entities: Vec::new()
         };
 
         return new_room;
@@ -133,7 +143,7 @@ impl Path {
     fn new(initial_x: usize, initial_y: usize) -> Path {
         let new_path = Path {
             steps: vec![(initial_x, initial_y)],
-            max_len: 6,
+            max_len: 3,
             possible_next_steps: Vec::new()
         };
         return new_path;
@@ -245,7 +255,7 @@ impl Dungeon {
         
         self.unblock_all_exists_from_room(init_row, init_col);
         self.set_room_as_visited(init_row, init_col);
-        self.generate_exit_coord(init_row, init_col);
+        self.sprawn_an_entity_stairs_to_lower_level(init_row, init_col);
 
         // return the starting point of the hero, based on init room
         return (
@@ -254,7 +264,22 @@ impl Dungeon {
         );
     }
 
-    fn generate_exit_coord(&mut self, initial_x: usize, initial_y: usize) {
+    fn spawn_an_entity(&mut self, entity_type: EntityType, entity_pos_x: usize, entity_pos_y: usize) {
+
+        let new_entity = Entity {
+            entity_type: entity_type,
+            entity_pos_x: entity_pos_x,
+            entity_pos_y: entity_pos_y
+        };
+        
+        // add it to the room
+        let entity_room_row: usize = entity_pos_y / BASE_ROOM_SIZE;
+        let entity_room_col: usize = entity_pos_x / BASE_ROOM_SIZE;
+
+        self.get_room(entity_room_col, entity_room_row).entities.push(new_entity);
+    }
+
+    fn sprawn_an_entity_stairs_to_lower_level(&mut self, initial_x: usize, initial_y: usize) {
         let mut new_path: Path = Path::new(initial_x, initial_y);
 
         // initally - all direction are possible, so any way can be chosen
@@ -283,8 +308,12 @@ impl Dungeon {
         let exit_coord = new_path.last_step();
         let exit_coord_x = exit_coord.unwrap().0;
         let exit_coord_y = exit_coord.unwrap().1;
-
-        self.get_room(exit_coord_x, exit_coord_y).can_go_down = true;
+        
+        self.spawn_an_entity(
+            EntityType::StairsToLowerLevel,
+            exit_coord_x * BASE_ROOM_SIZE + 4,
+            exit_coord_y * BASE_ROOM_SIZE + 4
+        )
     }
 
     fn get_room(&mut self, row: usize, col: usize) -> &mut Room {
@@ -409,10 +438,13 @@ impl RenderableContent for MapWindowContent {
                 imgs.push(TerminalImage::new(idx, x, y));
 
                 // EXIT
-                if vars.dungeon.get_room(row, col).can_go_down == true {
+                // TODO: supporting only EXIT right now
+                if vars.dungeon.get_room(row, col).entities.len() > 0 {
 
-                    let exit_x = ((col * BASE_ROOM_SIZE) as isize) - x_pad + 4;
-                    let exit_y = ((row * BASE_ROOM_SIZE) as isize) - y_pad + 4;
+                    let ent = &vars.dungeon.get_room(row, col).entities[0];
+
+                    let exit_x = ent.entity_pos_x as isize - x_pad;
+                    let exit_y = ent.entity_pos_y as isize - y_pad;
 
                     imgs.push(TerminalImage::new(25, exit_x, exit_y));
                 };
@@ -515,14 +547,14 @@ impl RenderableContent for LogWindowContent {
                     exit_coord_string.push_str(&row.to_string());
                     exit_coord_string.push(',');
                     exit_coord_string.push_str(&col.to_string());
-
-                    if vars.dungeon.get_room(row, col).can_go_down == true {
+                    
+                    // pos of exit here!
+                    if vars.dungeon.get_room(row, col).entities.len() > 0 {
                         imgs.push(TerminalImage::with_text(exit_coord_string, 0, 0));
                     }
                 }
             }
         }
-
 
         for s in vars.logs.iter().rev() { 
 
@@ -644,5 +676,11 @@ impl GameVars {
             self.logs.pop_front(); 
         }
     }
-
 }
+
+
+// TODO:
+// add entity (exit)
+// add collision with walls
+// add collision with entity
+// delete exit coords from the start log window
