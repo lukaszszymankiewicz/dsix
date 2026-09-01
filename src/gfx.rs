@@ -3,7 +3,7 @@ use std::io;
 use crossterm::{queue, cursor, style};
 
 
-static GRAPHICS: [RawImage; 27] = [
+static GRAPHICS: [RawImage; 29] = [
     RawImage{desc:"X",debug:"",gfx:"#################################################################################",rows:9,cols:9},
     RawImage{desc:"dead end",debug:"v",gfx:"###...######...######...######...######...######...##############################",rows:9,cols:9},
     RawImage{desc:"dead end",debug:"<",gfx:"##############################......###......###......###########################",rows:9,cols:9},
@@ -30,6 +30,8 @@ static GRAPHICS: [RawImage; 27] = [
     RawImage{desc: "", debug: "", gfx: r"     ______        -'      '-    /            \ |              ||,   -    -   ,|| )(__/  \__)( ||/     /\     \|(_     ^^     _) \__|IIIIII|__/   |-\IIIIII/-|    \          /     `--------`                   ", rows: 13, cols: 16 },
     RawImage{desc: "", debug: "", gfx: r"EXPLORATION", rows: 1, cols: 11 },
     RawImage{desc: "", debug: "", gfx: "$", rows: 1, cols: 1 },
+    RawImage{desc: "", debug: "", gfx: "ROW:", rows: 1, cols: 4 },
+    RawImage{desc: "", debug: "", gfx: "COL:", rows: 1, cols: 4 },
     RawImage{desc: "", debug: "", gfx: "?????????????????????????????????????????????????????????????????????????????????", rows: 9, cols: 9 },
 ];
 
