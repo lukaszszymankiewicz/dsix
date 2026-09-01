@@ -8,7 +8,7 @@ use crossterm::terminal::{ClearType, Clear, enable_raw_mode, disable_raw_mode};
 use crossterm::execute;
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 
-use crate::gfx::{TerminalScreen, TerminalImage, RenderableContent};
+use crate::gfx::{TerminalScreen, TerminalImage, RenderableContent, char_in_image};
 
 
 #[derive(Copy, Clone)]
@@ -19,8 +19,11 @@ pub enum Dir {
     Left = 3,
 }
 
-pub struct EntityType(pub usize, pub usize);
-pub const EntityStairsToLowerLevel: EntityType = EntityType(0, 28);
+pub struct EntityType{
+    pub img_idx: usize,
+}
+
+pub const ENTITY_STAIRS_TO_LOWER_LEVEL: EntityType = EntityType{img_idx: 25};
 
 impl Dir {
     fn opposite(&self) -> Dir {
@@ -35,17 +38,15 @@ impl Dir {
 
 static CHANCE_FOR_ROOM_TO_HAVE_ANY_EXIT_BLOCKED: usize = 3;
 
-static BASE_ATTACK: usize = 2;
-static BASE_ARMOR: usize = 0;
-static BASE_EXP: usize = 0;
-static BASE_SPEED: usize = 2;
-static LOG_SIZE: usize = 3;
-
-static BASE_LEVEL_W: usize = 8;
-static BASE_LEVEL_H: usize = 8;
-static BASE_ROOM_SIZE: usize = 9;
-
-static MAX_LEN_OF_PATH_TO_THE_EXIT: usize = 6;
+static BASE_ARMOR                  : usize = 0;
+static BASE_ATTACK                 : usize = 2;
+static BASE_EXP                    : usize = 0;
+static BASE_LEVEL_H                : usize = 8;
+static BASE_LEVEL_W                : usize = 8;
+static BASE_ROOM_SIZE              : usize = 9;
+static BASE_SPEED                  : usize = 2;
+static LOG_SIZE                    : usize = 3;
+static MAX_LEN_OF_PATH_TO_THE_EXIT : usize = 6;
 
 pub struct Game {
     pub screen: TerminalScreen,
@@ -109,7 +110,7 @@ impl Room {
             return 0;
         }
         self.visited = true; 
-        self.update_the_associated_img_idx();
+
         return 1;
     }
 
@@ -251,6 +252,7 @@ impl Dungeon {
         for row in 0..self.rows {
             for col in 0..self.cols {
                 self.block_random_exit_of_room(row, col);
+                self.get_room(row, col).update_the_associated_img_idx();
             }
         }
         
@@ -313,13 +315,26 @@ impl Dungeon {
         let entity_pos_x = (exit_room_col * BASE_ROOM_SIZE) + (BASE_ROOM_SIZE / 2);
         let entity_pos_y = (exit_room_row * BASE_ROOM_SIZE) + (BASE_ROOM_SIZE / 2);
 
-        self.spawn_an_entity(EntityStairsToLowerLevel, entity_pos_x, entity_pos_y);
+        self.spawn_an_entity(ENTITY_STAIRS_TO_LOWER_LEVEL, entity_pos_x, entity_pos_y);
 
     }
 
     fn get_room(&mut self, row: usize, col: usize) -> &mut Room {
         // rooms coords start from uppper-left corner of the Dungeon
         return self.rooms.get_mut(self.rows * row + col).unwrap()
+    }
+
+    fn get_room_by_entity_pos(&mut self, x: usize, y: usize) -> &mut Room {
+        return self.get_room(y/BASE_ROOM_SIZE, x/BASE_ROOM_SIZE);
+    }
+
+    fn position_is_an_obstacle(&mut self, x: usize, y: usize) -> bool {
+        let room_to_check: &Room = self.get_room_by_entity_pos(x, y);
+
+        match char_in_image(room_to_check.img_idx, x % BASE_ROOM_SIZE, y % BASE_ROOM_SIZE){
+            '#' => return true, 
+            _ => return false
+        }
     }
 
     fn get_neighbor_room_coords(&self, row: usize, col: usize, dir: Dir) -> Option<(usize, usize)> {
@@ -435,9 +450,15 @@ impl RenderableContent for MapWindowContent {
 
                 let x = ((col * BASE_ROOM_SIZE) as isize) - x_pad;
                 let y = ((row * BASE_ROOM_SIZE) as isize) - y_pad;
+                
+                let room = vars.dungeon.get_room(row, col);
+                let idx: usize = room.img_idx;
 
-                let idx: usize = vars.dungeon.get_room(row, col).img_idx;
-                imgs.push(TerminalImage::new(idx, x, y));
+                if !room.visited {
+                    imgs.push(TerminalImage::new(28, x, y));
+                } else {
+                    imgs.push(TerminalImage::new(idx, x, y));
+                }
 
                 // EXIT
                 let n_entities_in_room = vars.dungeon.get_room(row, col).entities.len();
@@ -448,11 +469,9 @@ impl RenderableContent for MapWindowContent {
 
                     let entity_render_x = ent.entity_pos_x as isize - x_pad;
                     let entity_render_y = ent.entity_pos_y as isize - y_pad;
+                    let img = ent.entity_type.img_idx;
 
-                    // let entity_render_x = (col * BASE_ROOM_SIZE) as isize - x_pad + 4;
-                    // let entity_render_y = (row * BASE_ROOM_SIZE) as isize - y_pad + 4;
-
-                    imgs.push(TerminalImage::new(25, entity_render_x, entity_render_y));
+                    imgs.push(TerminalImage::new(img, entity_render_x, entity_render_y));
                 };
             }
         }
@@ -514,8 +533,8 @@ impl RenderableContent for StatWindowContent {
         imgs.push(TerminalImage::with_text(game.armor.to_string(), 10, 4));
         imgs.push(TerminalImage::with_text(game.speed.to_string(), 10, 5));
         imgs.push(TerminalImage::with_text(game.exp.to_string(), 10, 6));
-        imgs.push(TerminalImage::with_text(game.hero_room_x.to_string(), 10, 7));
-        imgs.push(TerminalImage::with_text(game.hero_room_y.to_string(), 10, 8));
+        imgs.push(TerminalImage::with_text(game.hero_pos_x.to_string(), 10, 7));
+        imgs.push(TerminalImage::with_text(game.hero_pos_y.to_string(), 10, 8));
 
         imgs 
     }
@@ -646,33 +665,39 @@ impl Game{
 }
 
 impl GameVars {
-    pub fn move_hero_up(&mut self) -> usize {
-        self.hero_pos_y -= 1;
-        self.hero_room_y = self.hero_pos_y / BASE_ROOM_SIZE;
-        return 1;
+
+    pub fn move_hero(&mut self, dir: Dir) {
+        let mut new_x: usize = self.hero_pos_x;
+        let mut new_y: usize = self.hero_pos_y;
+        let log: String;
+
+        match dir {
+            Dir::Left => {new_x -=1; log = "You have moved left".to_string() },
+            Dir::Right => {new_x +=1; log = "You have moved right".to_string() },
+            Dir::Up => {new_y -=1; log = "You have moved up".to_string() },
+            Dir::Down => {new_y +=1; log = "You have moved down".to_string() },
+        }
+
+        match self.dungeon.position_is_an_obstacle(new_x, new_y) {
+            false =>  {
+                self.hero_pos_y = new_y;
+                self.hero_pos_x = new_x;
+                self.add_log(log);
+            },
+            true => {
+                self.add_log("You went into wall...".to_string());
+            }
+        }
     }
 
-    pub fn move_hero_down(&mut self) -> usize {
-        self.hero_pos_y += 1;
-        self.hero_room_y = self.hero_pos_y / BASE_ROOM_SIZE;
-        return 1;
-    }
+    pub fn set_the_room_as_visited_if_needed(&mut self) {
+        let room: &mut Room = self.dungeon.get_room_by_entity_pos(self.hero_pos_x, self.hero_pos_y);
 
-    pub fn move_hero_right(&mut self) -> usize {
-        self.hero_pos_x += 1;
-        self.hero_room_x = self.hero_pos_x / BASE_ROOM_SIZE;
-        return 1;
-    }
+        if room.visited == false {
+            room.visit();
+            self.add_log("You have entered new room!".to_string());
+        }
 
-    pub fn move_hero_left(&mut self) -> usize {
-        self.hero_pos_x -= 1;
-        self.hero_room_x = self.hero_pos_x / BASE_ROOM_SIZE;
-        return 1;
-    }
-    
-    pub fn visit_room_in_current_hero_pos(&mut self) -> usize {
-        let res: usize = self.dungeon.set_room_as_visited(self.hero_room_y, self.hero_room_x);
-        return res;
     }
 
     pub fn visit_all_rooms(&mut self) {
@@ -690,6 +715,5 @@ impl GameVars {
 
 
 // TODO:
-// add collision with walls
 // add collision with entity
 // delete exit coords from the start log window

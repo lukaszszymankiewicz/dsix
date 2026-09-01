@@ -75,6 +75,21 @@ pub struct TerminalScreen {
     pub screen: io::Stdout
 }
 
+pub fn char_in_image(idx: usize, pos_x: usize, pos_y: usize) -> char {
+    let raw = &GRAPHICS[idx];
+    let idx = (raw.cols * pos_y) as usize + pos_x as usize;
+
+    let detected_char = match raw.gfx.chars().nth(idx) {
+        Some(c) => c,
+        None => '#',
+    };
+    
+    println!("detected {detected_char}");
+
+    return detected_char;
+
+}
+
 impl TerminalImage {
     pub fn new(idx: usize, pos_x: isize, pos_y: isize) -> TerminalImage {
         let raw = &GRAPHICS[idx];

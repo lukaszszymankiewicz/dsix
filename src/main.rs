@@ -42,33 +42,17 @@ fn main() {
         // controls
         match read() {
             Ok(k) => match k {
-                Event::Key(KeyEvent{code: KeyCode::Up, ..}) => {
-                    let _ = game.vars.move_hero_up();
-                    game.vars.add_log("You have moved up...".to_string());
-                }
-                Event::Key(KeyEvent{code: KeyCode::Down, ..}) => {
-                    let _ = game.vars.move_hero_down();
-                    game.vars.add_log("You have moved down...".to_string());
-                }
-                Event::Key(KeyEvent{code: KeyCode::Right, ..}) => {
-                    let _ = game.vars.move_hero_right();
-                    game.vars.add_log("You have moved right...".to_string());
-                }
-                Event::Key(KeyEvent{code: KeyCode::Left, ..}) => {
-                    let _ = game.vars.move_hero_left();
-                    game.vars.add_log("You have moved left...".to_string());
-                }
+                Event::Key(KeyEvent{code: KeyCode::Up, ..}) => game.vars.move_hero(game::Dir::Up),
+                Event::Key(KeyEvent{code: KeyCode::Down, ..}) => game.vars.move_hero(game::Dir::Down),
+                Event::Key(KeyEvent{code: KeyCode::Right, ..}) => game.vars.move_hero(game::Dir::Right),
+                Event::Key(KeyEvent{code: KeyCode::Left, ..}) => game.vars.move_hero(game::Dir::Left),
                 _ => break
             },
             Err(_) => todo!(),
         };
         
         // check the room
-        let res = game.vars.visit_room_in_current_hero_pos();
-
-        if res == 1 {
-            game.vars.add_log("You have entered new room!".to_string());
-        }
+        game.vars.set_the_room_as_visited_if_needed();
     }
 
     let _ = game.leave_pysical_terminal();
