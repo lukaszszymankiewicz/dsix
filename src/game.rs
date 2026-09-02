@@ -57,8 +57,6 @@ pub struct GameVars {
     dungeon: Dungeon,
     hero_pos_x: usize,
     hero_pos_y: usize,
-    hero_room_x: usize,
-    hero_room_y: usize,
     attack: usize,
     armor: usize,
     speed: usize,
@@ -252,10 +250,15 @@ impl Dungeon {
         for row in 0..self.rows {
             for col in 0..self.cols {
                 self.block_random_exit_of_room(row, col);
-                self.get_room(row, col).update_the_associated_img_idx();
             }
         }
         
+        for row in 0..self.rows {
+            for col in 0..self.cols {
+                self.get_room(row, col).update_the_associated_img_idx();
+            }
+        }
+
         self.unblock_all_exists_from_room(init_row, init_col);
         self.set_room_as_visited(init_row, init_col);
         self.spawn_an_entity_stairs_to_lower_level(init_row, init_col);
@@ -348,8 +351,6 @@ impl Dungeon {
     }
 
     fn block_single_exit_from_room(&mut self, row: usize, col: usize, dir: Dir) {
-
-        // self.block_all_exists_from_room(row, 0);
         self.get_room(row, col).block_exit(dir);
 
         if let Some((neighboour_row, neighbour_col)) = self.get_neighbor_room_coords(row, col, dir) {
@@ -393,8 +394,8 @@ impl Dungeon {
         match throw_k6_dice() {
             0 => self.block_single_exit_from_room(row, col, Dir::Left),
             1 => self.block_single_exit_from_room(row, col, Dir::Right),
-            2 => self.block_single_exit_from_room(row, col, Dir::Down),
-            3 => self.block_single_exit_from_room(row, col, Dir::Up),
+            2 => self.block_single_exit_from_room(row, col, Dir::Up),
+            3 => self.block_single_exit_from_room(row, col, Dir::Down),
             4 => {
                 self.block_single_exit_from_room(row, col, Dir::Up);
                 self.block_single_exit_from_room(row, col, Dir::Down);
@@ -609,8 +610,6 @@ impl Game{
                 dungeon: Dungeon::new(1),
                 hero_pos_x: 0,
                 hero_pos_y: 0,
-                hero_room_x: 0,
-                hero_room_y: 0,
                 attack: BASE_ATTACK,
                 armor: BASE_ARMOR,
                 speed: BASE_SPEED,
@@ -623,9 +622,6 @@ impl Game{
 
         game.vars.hero_pos_x = hero_init_pos_x;
         game.vars.hero_pos_y = hero_init_pos_y;
-
-        game.vars.hero_room_x = hero_init_pos_x / BASE_ROOM_SIZE;
-        game.vars.hero_room_y = hero_init_pos_y / BASE_ROOM_SIZE;
 
         return game;
     }
@@ -713,7 +709,5 @@ impl GameVars {
     }
 }
 
-
 // TODO:
 // add collision with entity
-// delete exit coords from the start log window
