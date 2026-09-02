@@ -464,6 +464,10 @@ impl RenderableContent for MapWindowContent {
                 // EXIT
                 let n_entities_in_room = vars.dungeon.get_room(row, col).entities.len();
 
+                if vars.dungeon.get_room(row, col).visited == false {
+                    continue
+                }
+
                 for entity_idx in 0..n_entities_in_room {
 
                     let ent = &vars.dungeon.get_room(row, col).entities[entity_idx];
