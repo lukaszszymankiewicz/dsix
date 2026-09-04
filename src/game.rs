@@ -8,7 +8,7 @@ use crossterm::terminal::{ClearType, Clear, enable_raw_mode, disable_raw_mode};
 use crossterm::execute;
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 
-use crate::gfx::{TerminalScreen, TerminalImage, RenderableContent, char_in_image};
+use crate::gfx::{TerminalScreen, TerminalImage, RenderableContent, char_in_image, GFX_IDX};
 
 
 #[derive(Copy, Clone)]
@@ -23,7 +23,7 @@ pub struct EntityType{
     pub img_idx: usize,
 }
 
-pub const ENTITY_STAIRS_TO_LOWER_LEVEL: EntityType = EntityType{img_idx: 25};
+pub const ENTITY_STAIRS_TO_LOWER_LEVEL: EntityType = EntityType{img_idx: GFX_IDX::ENTITY_EXIT};
 
 impl Dir {
     fn opposite(&self) -> Dir {
@@ -86,7 +86,7 @@ impl Room {
         let new_room: Room = Room{
             visited: false,
             exits: [true; 4],
-            img_idx: 28,
+            img_idx: GFX_IDX::CORRIDOR_UNKNOWN,
             entities: Vec::new()
         };
 
@@ -454,19 +454,20 @@ impl RenderableContent for MapWindowContent {
                 
                 let room = vars.dungeon.get_room(row, col);
                 let idx: usize = room.img_idx;
-
+                
+                // FOG OF WAR
                 if !room.visited {
-                    imgs.push(TerminalImage::new(28, x, y));
+                    imgs.push(TerminalImage::new(GFX_IDX::CORRIDOR_UNKNOWN, x, y));
                 } else {
                     imgs.push(TerminalImage::new(idx, x, y));
                 }
 
-                // EXIT
-                let n_entities_in_room = vars.dungeon.get_room(row, col).entities.len();
-
+                // if there is no entity to render, just follow along
                 if vars.dungeon.get_room(row, col).visited == false {
                     continue
                 }
+
+                let n_entities_in_room = vars.dungeon.get_room(row, col).entities.len();
 
                 for entity_idx in 0..n_entities_in_room {
 
@@ -485,7 +486,7 @@ impl RenderableContent for MapWindowContent {
         let pos_x = win_w as isize / 2;
         let pos_y = win_h as isize / 2;
 
-        imgs.push(TerminalImage::new(16, pos_x, pos_y));
+        imgs.push(TerminalImage::new(GFX_IDX::ENTITY_HERO, pos_x, pos_y));
         
         return imgs;
     }
@@ -508,7 +509,7 @@ impl RenderableContent for DebugMapWindowContent {
 
         // Hero
         imgs.push(TerminalImage::new(
-            16,
+            GFX_IDX::ENTITY_HERO,
             (vars.dungeon.cols/2).try_into().unwrap(),
             (vars.dungeon.rows/2).try_into().unwrap())
         );
@@ -523,14 +524,13 @@ impl RenderableContent for StatWindowContent {
         let mut imgs = Vec::new();
 
         // Labels
-        imgs.push(TerminalImage::new(17, 1, 1)); // LEVEL:
-        imgs.push(TerminalImage::new(18, 1, 2)); // 
-        imgs.push(TerminalImage::new(19, 1, 3)); // ATTACK:
-        imgs.push(TerminalImage::new(20, 1, 4)); // ARMOR:
-        imgs.push(TerminalImage::new(21, 1, 5)); // SPEED:
-        imgs.push(TerminalImage::new(22, 1, 6)); // EXP:
-        imgs.push(TerminalImage::new(26, 1, 7)); // ROW:
-        imgs.push(TerminalImage::new(27, 1, 8)); // COL:
+        imgs.push(TerminalImage::with_text("LEVEL".to_string(), 1, 1));
+        imgs.push(TerminalImage::with_text("ATTACK".to_string(), 1, 3));
+        imgs.push(TerminalImage::with_text("ARMOR".to_string(), 1, 4));
+        imgs.push(TerminalImage::with_text("SPEED".to_string(), 1, 5));
+        imgs.push(TerminalImage::with_text("EXP".to_string(), 1, 6));
+        imgs.push(TerminalImage::with_text("ROW".to_string(), 1, 7));
+        imgs.push(TerminalImage::with_text("COL".to_string(), 1, 8));
 
         // Values
         imgs.push(TerminalImage::with_text(game.dungeon.level_number.to_string(), 10, 1));
@@ -549,7 +549,7 @@ pub struct SkullWindowContent;
 impl RenderableContent for SkullWindowContent {
     fn render(&self, _game: &mut GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
         let mut imgs = Vec::new();
-        imgs.push(TerminalImage::new(23, 2, 0));
+        imgs.push(TerminalImage::new(GFX_IDX::DECORATION_SKULL, 2, 0));
         imgs 
     }
 }
@@ -558,7 +558,7 @@ pub struct BannerWindowContent;
 impl RenderableContent for BannerWindowContent {
     fn render(&self, _game: &mut GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
         let mut imgs = Vec::new();
-        imgs.push(TerminalImage::new(24, 32, 0));
+        imgs.push(TerminalImage::with_text("EXPLORATION".to_string(), 32, 0));
         imgs 
     }
 }
@@ -714,4 +714,6 @@ impl GameVars {
 }
 
 // TODO:
+// add popup window, which can be closed.
+// Intriduce scene - collection of windowds, with the controls assignedto them
 // add collision with entity

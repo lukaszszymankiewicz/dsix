@@ -3,7 +3,36 @@ use std::io;
 use crossterm::{queue, cursor, style};
 
 
-static GRAPHICS: [RawImage; 29] = [
+#[allow(nonstandard_style)]
+#[non_exhaustive]
+pub struct GFX_IDX;
+
+#[allow(unused)]
+#[allow(nonstandard_style)]
+impl GFX_IDX {
+    pub const CORRIDOR_FULLY_BLOCKED : usize = 0  ;
+    pub const CORRIDOR_Uxxx          : usize = 1  ;
+    pub const CORRIDOR_xRxx          : usize = 2  ;
+    pub const CORRIDOR_URxx          : usize = 3  ;
+    pub const CORRIDOR_xxDx          : usize = 4  ;
+    pub const CORRIDOR_UxDx          : usize = 5  ;
+    pub const CORRIDOR_xRDx          : usize = 6  ;
+    pub const CORRIDOR_UxDR          : usize = 7  ;
+    pub const CORRIDOR_xxxL          : usize = 8  ;
+    pub const CORRIDOR_UxxL          : usize = 9  ;
+    pub const CORRIDOR_xRxL          : usize = 10 ;
+    pub const CORRIDOR_URxL          : usize = 11 ;
+    pub const CORRIDOR_xxDL          : usize = 12 ;
+    pub const CORRIDOR_UxDL          : usize = 13 ;
+    pub const CORRIDOR_xRDL          : usize = 14 ;
+    pub const CORRIDOR_URDL          : usize = 15 ;
+    pub const CORRIDOR_UNKNOWN       : usize = 16 ; 
+    pub const ENTITY_HERO            : usize = 17 ;
+    pub const ENTITY_EXIT            : usize = 18 ;
+    pub const DECORATION_SKULL       : usize = 19 ;
+}
+
+static GRAPHICS: [RawImage; 20] = [
     RawImage{desc:"X",debug:"",gfx:"#################################################################################",rows:9,cols:9},
     RawImage{desc:"dead end",debug:"v",gfx:"###...######...######...######...######...#######################################",rows:9,cols:9},
     RawImage{desc:"dead end",debug:"<",gfx:"##############################......###......###......###########################",rows:9,cols:9},
@@ -20,19 +49,10 @@ static GRAPHICS: [RawImage; 29] = [
     RawImage{desc:"intersection",debug:"┤",gfx:"###...######...######...###......###......###......######...######...######...###",rows:9,cols:9},
     RawImage{desc:"intersection",debug:"┬",gfx:"###########################...........................###...######...######...###",rows:9,cols:9},
     RawImage{desc:"intersection",debug:"┼",gfx:"###...######...######...###...........................###...######...######...###",rows:9,cols:9},
-    RawImage{desc: "", debug: "", gfx: "@", rows: 1, cols: 1 },
-    RawImage{desc: "", debug: "", gfx: "LEVEL: ", rows: 1, cols: 7 },
-    RawImage{desc: "", debug: "", gfx: "------------", rows: 1, cols: 11 },
-    RawImage{desc: "", debug: "", gfx: "ATTACK: ", rows: 1, cols: 8 },
-    RawImage{desc: "", debug: "", gfx: "ARMOR: ", rows: 1, cols: 7 },
-    RawImage{desc: "", debug: "", gfx: "SPEED: ", rows: 1, cols: 7 },
-    RawImage{desc: "", debug: "", gfx: "EXP: ", rows: 1, cols: 5 },
-    RawImage{desc: "", debug: "", gfx: r"     ______        -'      '-    /            \ |              ||,   -    -   ,|| )(__/  \__)( ||/     /\     \|(_     ^^     _) \__|IIIIII|__/   |-\IIIIII/-|    \          /     `--------`                   ", rows: 13, cols: 16 },
-    RawImage{desc: "", debug: "", gfx: r"EXPLORATION", rows: 1, cols: 11 },
-    RawImage{desc: "", debug: "", gfx: "$", rows: 1, cols: 1 },
-    RawImage{desc: "", debug: "", gfx: "ROW:", rows: 1, cols: 4 },
-    RawImage{desc: "", debug: "", gfx: "COL:", rows: 1, cols: 4 },
     RawImage{desc: "", debug: "", gfx: "?????????????????????????????????????????????????????????????????????????????????", rows: 9, cols: 9 },
+    RawImage{desc: "", debug: "", gfx: "@", rows: 1, cols: 1 },
+    RawImage{desc: "", debug: "", gfx: "$", rows: 1, cols: 1 },
+    RawImage{desc: "", debug: "", gfx: r"     ______        -'      '-    /            \ |              ||,   -    -   ,|| )(__/  \__)( ||/     /\     \|(_     ^^     _) \__|IIIIII|__/   |-\IIIIII/-|    \          /     `--------`                   ", rows: 13, cols: 16 },
 ];
 
 struct RawImage {
