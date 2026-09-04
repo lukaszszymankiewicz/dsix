@@ -1,6 +1,7 @@
-use crate::GameVars;
-use std::io;
 use crossterm::{queue, cursor, style};
+use std::io;
+
+use crate::game::GameVars;
 
 
 #[allow(nonstandard_style)]

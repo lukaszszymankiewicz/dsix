@@ -1,11 +1,23 @@
-mod gfx;
+mod dir;
+mod dice;
+mod dungeon;
+mod entity;
 mod game;
+mod gfx;
 
-use crossterm::event::{KeyCode, KeyEvent, Event};
-use crossterm::event::read;
-use game::{DebugMapWindowContent, BannerWindowContent, LogWindowContent, StatWindowContent, MapWindowContent, SkullWindowContent};
-use game::{Game, GameVars};
+use crossterm::event::{KeyCode, KeyEvent, Event, read};
+use crate::game::{
+    DebugMapWindowContent,
+    BannerWindowContent,
+    LogWindowContent,
+    StatWindowContent,
+    MapWindowContent,
+    SkullWindowContent,
+    Game,
+};
 use std::env;
+
+use crate::dir::Dir;
 
 fn prepare_ui(game: &mut Game) -> usize {
     game.screen.add_new_window_to_layout(MapWindowContent, 13, 30, 24, 6, true, '.');
@@ -42,10 +54,10 @@ fn main() {
         // controls
         match read() {
             Ok(k) => match k {
-                Event::Key(KeyEvent{code: KeyCode::Up, ..}) => game.vars.move_hero(game::Dir::Up),
-                Event::Key(KeyEvent{code: KeyCode::Down, ..}) => game.vars.move_hero(game::Dir::Down),
-                Event::Key(KeyEvent{code: KeyCode::Right, ..}) => game.vars.move_hero(game::Dir::Right),
-                Event::Key(KeyEvent{code: KeyCode::Left, ..}) => game.vars.move_hero(game::Dir::Left),
+                Event::Key(KeyEvent{code: KeyCode::Up, ..}) => game.vars.move_hero(Dir::Up),
+                Event::Key(KeyEvent{code: KeyCode::Down, ..}) => game.vars.move_hero(Dir::Down),
+                Event::Key(KeyEvent{code: KeyCode::Right, ..}) => game.vars.move_hero(Dir::Right),
+                Event::Key(KeyEvent{code: KeyCode::Left, ..}) => game.vars.move_hero(Dir::Left),
                 _ => break
             },
             Err(_) => todo!(),
