@@ -30,7 +30,7 @@ fn prepare_ui(game: &mut Game) -> usize {
     return 0;
 }
 
-fn main() {
+fn sceeeneee() {
     // GAME
     let mut game: Game = Game::new();     
     let _ = game.prepare_pysical_terminal();

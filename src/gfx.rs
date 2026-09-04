@@ -104,8 +104,6 @@ pub fn char_in_image(idx: usize, pos_x: usize, pos_y: usize) -> char {
         Some(c) => c,
         None => '#',
     };
-    
-    println!("detected {detected_char}");
 
     return detected_char;
 

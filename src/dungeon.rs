@@ -13,7 +13,7 @@ pub static BASE_ROOM_SIZE                           : usize = 9;
     static BASE_LEVEL_H                             : usize = 8;
     static BASE_LEVEL_W                             : usize = 8;
 
-pub struct Room {
+struct Room {
     visited: bool,
     exits: [bool; 4],
     img_idx: usize,
@@ -275,7 +275,8 @@ impl Dungeon {
     pub fn there_is_some_entities_in_the_room(&mut self, row: usize, col: usize) -> bool {
         return self.get_room(row, col).entities.len() > 0;
     }
-
+    
+    // DUNGEON SPAWNING ENTITIES
     fn spawn_an_entity(&mut self, entity_type: EntityType, entity_pos_x: usize, entity_pos_y: usize) {
         let new_entity = Entity {
             entity_type: entity_type,
@@ -397,7 +398,4 @@ impl Path {
     fn choose_random_possible_step(&mut self) -> Dir  {
         return *self.possible_next_steps.choose(&mut rand::rng()).unwrap();
     }
-
 }
-
-
