@@ -1,73 +1,86 @@
-mod dir;
-mod dice;
-mod dungeon;
-mod entity;
-mod game;
-mod gfx;
-mod windows;
-
+use crate::gfx::{Layout, RenderableScene};
 use crossterm::event::{KeyCode, KeyEvent, Event, read};
+use crate::dir::{Dir};
+
+use crate::game::{GameVars, ControlSignal};
+
 use crate::windows::{
-    DebugMapWindowContent,
-    BannerWindowContent,
-    LogWindowContent,
-    StatWindowContent,
-    MapWindowContent,
-    SkullWindowContent,
+    // DebugWindowMainMapContents,
+    WindowTopBannerContent,
+    WindowLogsContent,
+    WindowHeroStatsContent,
+    WindowMainMapContents,
+    WindowSkullImageContent,
+    GreetingWindowContent,
 };
 
-use std::env;
-use crate::game::Game;
-use crate::dir::Dir;
 
-fn prepare_ui(game: &mut Game) -> usize {
-    game.screen.add_new_window_to_layout(MapWindowContent, 13, 30, 24, 6, true, '.');
-    game.screen.add_new_window_to_layout(SkullWindowContent, 13, 20, 2, 6, true, ' ');
-    game.screen.add_new_window_to_layout(StatWindowContent, 13, 15, 24+30+2, 6, true, ' ');
-    game.screen.add_new_window_to_layout(BannerWindowContent, 1, 69, 2, 3, true, ' ');
-    game.screen.add_new_window_to_layout(LogWindowContent, 3, 69, 2, 21, true, ' ');
+pub struct MainDungeonScene;
 
-    return 0;
-}
+impl RenderableScene for MainDungeonScene {
+    fn fill_the_layout(&self, layout: &mut Layout) {
+        layout.add_new_window_to_layout(WindowMainMapContents, 13, 30, 24, 6, true, '.');
+        layout.add_new_window_to_layout(WindowSkullImageContent, 13, 20, 2, 6, true, ' ');
+        layout.add_new_window_to_layout(WindowHeroStatsContent, 13, 15, 24+30+2, 6, true, ' ');
 
-fn sceeeneee() {
-    // GAME
-    let mut game: Game = Game::new();     
-    let _ = game.prepare_pysical_terminal();
-    let _ = prepare_ui(&mut game);
-
-    let args: Vec<String> = env::args().collect();
-    
-    // run game in debug mode -- only dungeon in sketch form is shown
-    if args.len() == 2 && args[1] == "debug".to_string() {
-        game.screen.winds.clear();
-        game.screen.add_new_window_to_layout(DebugMapWindowContent, 20, 20, 24, 6, false, ' ');
-        game.vars.visit_all_rooms();
+        layout.add_new_window_to_layout(WindowTopBannerContent, 1, 69, 2, 3, true, ' ');
+        layout.add_new_window_to_layout(WindowLogsContent, 3, 69, 2, 21, true, ' ');
     }
-    
-    // game loop
-    loop {
 
-        // update
-        game.render();
-        game.flush_screen();
+    fn correspond_to_controls(&self, vars: &mut GameVars) -> ControlSignal {
+        
+        let mut control_signal: ControlSignal = ControlSignal::DoNothingBitchSlap;
 
-        // controls
         match read() {
             Ok(k) => match k {
-                Event::Key(KeyEvent{code: KeyCode::Up, ..}) => game.vars.move_hero(Dir::Up),
-                Event::Key(KeyEvent{code: KeyCode::Down, ..}) => game.vars.move_hero(Dir::Down),
-                Event::Key(KeyEvent{code: KeyCode::Right, ..}) => game.vars.move_hero(Dir::Right),
-                Event::Key(KeyEvent{code: KeyCode::Left, ..}) => game.vars.move_hero(Dir::Left),
-                _ => break
+                Event::Key(KeyEvent{code: KeyCode::Up, ..}) => control_signal = vars.move_hero(Dir::Up),
+                Event::Key(KeyEvent{code: KeyCode::Down, ..}) => control_signal = vars.move_hero(Dir::Down),
+                Event::Key(KeyEvent{code: KeyCode::Right, ..}) => control_signal = vars.move_hero(Dir::Right),
+                Event::Key(KeyEvent{code: KeyCode::Left, ..}) => control_signal = vars.move_hero(Dir::Left),
+                _ => control_signal = ControlSignal::ExitGame,
+            },
+            Err(_) => control_signal = ControlSignal::ExitGame,
+        };
+
+        return control_signal;
+    }
+
+    fn dispatch_scene(&self, vars: &mut GameVars) -> Box<dyn RenderableScene> {
+        return Box::new(MainDungeonScene);
+    }
+}
+
+
+
+pub struct GreetingScene;
+impl RenderableScene for GreetingScene {
+    fn fill_the_layout(&self, layout: &mut Layout) {
+        layout.add_new_window_to_layout(GreetingWindowContent, 13, 30, 24, 6, true, ' ');
+    }
+
+    fn correspond_to_controls(&self, vars: &mut GameVars) -> ControlSignal {
+
+        let mut control_signal: ControlSignal = ControlSignal::DoNothingBitchSlap;
+
+        match read() {
+            Ok(k) => match k {
+                Event::Key(KeyEvent{code: KeyCode::Left, ..}) => control_signal = ControlSignal::ExitGame,
+                _ => control_signal = ControlSignal::ChangeScene,
             },
             Err(_) => todo!(),
         };
         
-        // check the room
-        game.vars.set_the_room_as_visited_if_needed();
+        return control_signal;
     }
 
-    let _ = game.leave_pysical_terminal();
-
+    fn dispatch_scene(&self, vars: &mut GameVars) -> Box<dyn RenderableScene> {
+        return Box::new(MainDungeonScene);
+    }
 }
+
+// pub struct DebugMainDungeonScene;
+// impl RenderableScene for DebugMainDungeonScene {
+//     fn fill_the_layout(ts: &mut Scene) {
+//         ts.add_new_window_to_layout(DebugWindowMainMapContents, 13, 30, 24, 6, true, '.');
+//     }
+// }

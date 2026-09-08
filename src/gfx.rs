@@ -1,8 +1,9 @@
 use crossterm::{queue, cursor, style};
 use std::io;
 
-use crate::game::GameVars;
+use crate::game::{GameVars, ControlSignal};
 
+use crate::windows::WindowSkullImageContent;
 
 #[allow(nonstandard_style)]
 #[non_exhaustive]
@@ -80,6 +81,12 @@ pub trait RenderableContent {
     fn render(&self, game: &mut GameVars, rows: usize, cols: usize) -> Vec<TerminalImage>;
 }
 
+pub trait RenderableScene{
+    fn fill_the_layout(&self, ts: &mut Layout);
+    fn correspond_to_controls(&self, vars: &mut GameVars) -> ControlSignal;
+    fn dispatch_scene(&self, vars: &mut GameVars) -> Box<dyn RenderableScene>;
+}
+
 pub struct TerminalWindow {
     imgs: Vec<TerminalImage>,
     pub content: Box<dyn RenderableContent>,
@@ -91,9 +98,8 @@ pub struct TerminalWindow {
     hborder: Option<String>,
 }
 
-pub struct TerminalScreen {
-    pub winds: Vec<TerminalWindow>,
-    pub screen: io::Stdout
+pub struct Layout {
+    pub windows: Vec<TerminalWindow>
 }
 
 pub fn char_in_image(idx: usize, pos_x: usize, pos_y: usize) -> char {
@@ -187,12 +193,13 @@ impl TerminalWindow {
 
 }
 
-impl TerminalScreen {
-    pub fn new() -> TerminalScreen {
-        return TerminalScreen{
-            winds: Vec::new(),
-            screen: io::stdout()
-        }
+impl Layout {
+    pub fn new() -> Layout {
+        let new_layout = Layout{
+            windows: Vec::new(),
+        };
+
+        return new_layout;
     }
 
     pub fn add_new_window_to_layout<C: RenderableContent + 'static>(
@@ -205,22 +212,22 @@ impl TerminalScreen {
         border: bool,
         bg: char
     ) {
-        self.winds.push(TerminalWindow::new(Box::new(content), rows, cols, pos_x, pos_y, border, bg));
+        self.windows.push(TerminalWindow::new(Box::new(content), rows, cols, pos_x, pos_y, border, bg));
     }
-    
-    pub fn render_window(&mut self, idx: usize) {
-        let wind = &mut self.winds[idx];
+
+    pub fn render_single_window(&mut self, idx: usize, output: &mut io::Stdout) {
+        let wind = &mut self.windows[idx];
 
         if wind.vborder.is_some() && wind.hborder.is_some() {
             for y in 0..wind.rows {
-                queue!(self.screen, cursor::MoveTo( (wind.pos_x - 1) as u16, (wind.pos_y + y) as u16)).unwrap();
-                queue!(self.screen, style::Print(&wind.vborder.as_ref().unwrap())).unwrap();
+                queue!(output, cursor::MoveTo( (wind.pos_x - 1) as u16, (wind.pos_y + y) as u16)).unwrap();
+                queue!(output, style::Print(&wind.vborder.as_ref().unwrap())).unwrap();
             }
 
-            queue!(self.screen, cursor::MoveTo( (wind.pos_x - 1) as u16, (wind.pos_y - 1) as u16)).unwrap();
-            queue!(self.screen, style::Print(&wind.hborder.as_ref().unwrap())).unwrap();
-            queue!(self.screen, cursor::MoveTo( (wind.pos_x - 1) as u16, (wind.pos_y + wind.rows) as u16)).unwrap();
-            queue!(self.screen, style::Print(&wind.hborder.as_ref().unwrap())).unwrap();
+            queue!(output, cursor::MoveTo( (wind.pos_x - 1) as u16, (wind.pos_y - 1) as u16)).unwrap();
+            queue!(output, style::Print(&wind.hborder.as_ref().unwrap())).unwrap();
+            queue!(output, cursor::MoveTo( (wind.pos_x - 1) as u16, (wind.pos_y + wind.rows) as u16)).unwrap();
+            queue!(output, style::Print(&wind.hborder.as_ref().unwrap())).unwrap();
         }
 
         for img in &wind.imgs {
@@ -263,11 +270,11 @@ impl TerminalScreen {
                     // img_line = &img.gfx;
                     img_line = &img.gfx[left .. right];
 
-                    queue!(self.screen, cursor::MoveTo(
+                    queue!(output, cursor::MoveTo(
                             (wind.pos_x as isize + img.pos_x + trim_left) as u16,
                             (wind.pos_y as isize + img.pos_y + line as isize) as u16,
                         )).unwrap();
-                    queue!(self.screen, style::Print(img_line)).unwrap();
+                    queue!(output, style::Print(img_line)).unwrap();
                 }
             }
         }

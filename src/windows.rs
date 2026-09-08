@@ -3,8 +3,8 @@ use crate::game::GameVars;
 use crate::gfx::{TerminalImage, RenderableContent, GFX_IDX};
 
 
-pub struct MapWindowContent;
-impl RenderableContent for MapWindowContent {
+pub struct WindowMainMapContents;
+impl RenderableContent for WindowMainMapContents {
     fn render(&self, vars: &mut GameVars, rows: usize, cols: usize) -> Vec<TerminalImage> {
         let win_h = rows;
         let win_w = cols;
@@ -69,8 +69,8 @@ impl RenderableContent for MapWindowContent {
     }
 }
 
-pub struct DebugMapWindowContent;
-impl RenderableContent for DebugMapWindowContent {
+pub struct DebugWindowMainMapContents;
+impl RenderableContent for DebugWindowMainMapContents {
     fn render(&self, vars: &mut GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
         
         let mut imgs = Vec::new();
@@ -95,8 +95,20 @@ impl RenderableContent for DebugMapWindowContent {
     }
 }
 
-pub struct StatWindowContent;
-impl RenderableContent for StatWindowContent {
+pub struct GreetingWindowContent;
+impl RenderableContent for GreetingWindowContent {
+    fn render(&self, game: &mut GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
+        let mut imgs = Vec::new();
+
+        // Values
+        imgs.push(TerminalImage::with_text("LEVEL 1".to_string(), 12, 6));
+        imgs.push(TerminalImage::with_text("(press any key)".to_string(), 9, 8));
+
+        imgs 
+    }
+}
+pub struct WindowHeroStatsContent;
+impl RenderableContent for WindowHeroStatsContent {
     fn render(&self, game: &mut GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
         let mut imgs = Vec::new();
 
@@ -122,8 +134,8 @@ impl RenderableContent for StatWindowContent {
     }
 }
 
-pub struct SkullWindowContent;
-impl RenderableContent for SkullWindowContent {
+pub struct WindowSkullImageContent;
+impl RenderableContent for WindowSkullImageContent {
     fn render(&self, _game: &mut GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
         let mut imgs = Vec::new();
         imgs.push(TerminalImage::new(GFX_IDX::DECORATION_SKULL, 2, 0));
@@ -131,8 +143,8 @@ impl RenderableContent for SkullWindowContent {
     }
 }
 
-pub struct BannerWindowContent;
-impl RenderableContent for BannerWindowContent {
+pub struct WindowTopBannerContent;
+impl RenderableContent for WindowTopBannerContent {
     fn render(&self, _game: &mut GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
         let mut imgs = Vec::new();
         imgs.push(TerminalImage::with_text("EXPLORATION".to_string(), 32, 0));
@@ -140,14 +152,13 @@ impl RenderableContent for BannerWindowContent {
     }
 }
 
-pub struct LogWindowContent;
-impl RenderableContent for LogWindowContent {
+pub struct WindowLogsContent;
+impl RenderableContent for WindowLogsContent {
     fn render(&self, vars: &mut GameVars, _rows: usize, _cols: usize) -> Vec<TerminalImage> {
         let log_size: isize = 2;
         let mut i: isize = 0;
         let mut imgs = Vec::new();
         
-
         // inital logs
         if vars.logs.len() == 0 {
 
